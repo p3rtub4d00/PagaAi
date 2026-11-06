@@ -1,6 +1,10 @@
 (() => {
 const main=document.querySelector("main"); if(!main)return;
 const originalMain=main.innerHTML; let currentUser=null; const adminPath=location.pathname==="/admin";
+const menuButton=document.querySelector(".menu-toggle"), nav=document.querySelector(".topbar nav");
+if(menuButton&&nav)menuButton.addEventListener("click",()=>{const opened=nav.classList.toggle("nav-open");menuButton.setAttribute("aria-expanded",String(opened));menuButton.textContent=opened?"×":"☰";});
+if(nav)nav.addEventListener("click",event=>{if(event.target.closest("a")){nav.classList.remove("nav-open");menuButton?.setAttribute("aria-expanded","false");if(menuButton)menuButton.textContent="☰";}});
+
 const states="AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(" ");
 const categories=["Energia Elétrica","Água","Aluguel","Tratamento Médico","Alimentação","Educação","Outro"];
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
