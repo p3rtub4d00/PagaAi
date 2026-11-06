@@ -25,7 +25,7 @@ async function admin(){frame("Painel administrativo",'<section class="pa-panel">
 function home(){main.innerHTML=originalMain;const y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();}
 document.addEventListener("click",async e=>{const t=e.target.closest("button,a");if(!t)return;
  if(t.hasAttribute("data-home")){e.preventDefault();home();return;}
- if(t.hasAttribute("data-role")){e.preventDefault();auth("register",false);return;}
+ if(t.hasAttribute("data-role")){e.preventDefault();if(t.dataset.role==="donor"){main.innerHTML='<div class="pa-auth-page"><section class="pa-auth-card"><span class="eyebrow">CONTRIBUIÇÕES</span><h1>Área de doações em preparação</h1><p>O cadastro de beneficiários e a análise documental estão sendo estruturados primeiro. As contribuições serão liberadas somente após integração e validação do fluxo de pagamento.</p><button class="pa-btn pa-primary pa-full" data-home>Voltar ao início</button></section></div>';}else auth("register",false);return;}
  if(t.dataset.authMode){auth(t.dataset.authMode,false);return;}
  if(t.hasAttribute("data-new-request")){debtForm();return;}
  if(t.hasAttribute("data-my-requests")){myRequests();return;}
