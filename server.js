@@ -193,7 +193,7 @@ app.post("/api/debts", requireAuth, uploadLimiter, upload.single("document"), as
     createdDoc = await DebtDocument.create({
       _id: createdRequest.document, request: createdRequest._id, owner: user._id,
       filename: path.basename(req.file.originalname).slice(0, 140), contentType: req.file.mimetype,
-      size: req.file.size, data: req.file.buffer
+      size: req.file.size, sha256: fileHash, data: req.file.buffer
     });
     res.status(201).json({ id: createdRequest._id, status: createdRequest.status, message: "Pedido enviado. Ele ficará privado enquanto aguarda análise documental." });
   } catch (error) {
