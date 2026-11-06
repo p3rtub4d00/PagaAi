@@ -90,6 +90,13 @@ function validCpf(value) {
   digit = (sum * 10) % 11; if (digit === 10) digit = 0;
   return digit === Number(cpf[10]);
 }
+function hasValidFileSignature(file) {
+  const b = file.buffer;
+  if (file.mimetype === "application/pdf") return b.subarray(0, 5).toString() === "%PDF-";
+  if (file.mimetype === "image/jpeg") return b[0] === 255 && b[1] === 216 && b[2] === 255;
+  if (file.mimetype === "image/png") return b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  return false;
+}
 function normalizePhone(value) { return String(value || "").replace(/\D/g, ""); }
 function validPhone(value) { const p = normalizePhone(value); return p.length === 10 || p.length === 11; }
 function signSession(user) { return jwt.sign({ sub: String(user._id), role: user.role }, JWT_SECRET, { expiresIn: "12h" }); }
@@ -162,9 +169,7 @@ app.post("/api/debts", requireAuth, upload.single("document"), async (req, res) 
     if (!categories.includes(category) || !Number.isFinite(value) || value < 1 || value > 1000000 || !req.file) {
       return res.status(400).json({ error: "Informe a categoria, um valor válido e anexe o comprovante da dívida." });
     }
-    const signature = req.file.buffer;
-    const validSignature = req.file.mimetype === "application/pdf" ? signature.subarray(0, 5).toString() === "%PDF-" : req.file.mimetype === "image/jpeg" ? signature[0] === 255 && signature[1] === 216 && signature[2] === 255 : req.file.mimetype === "image/png" ? signature.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) : false;
-    if (!validSignature) return res.status(400).json({ error: "O conteúdo do arquivo não corresponde a PDF, JPG ou PNG válido." });
+    if (!hasValidFileSignature(req.file)) return res.status(400).json({ error: "O conteúdo do arquivo não corresponde a PDF, JPG ou PNG válido." });
     const user = await User.findById(req.session.sub);
     if (!user) return res.status(401).json({ error: "Conta não encontrada." });
     const duplicate = await DebtRequest.findOne({ user: user._id, category, amount: value, status: { $in: ["pending_review", "needs_more_info", "approved"] } });
@@ -194,6 +199,30 @@ app.get("/api/my/debts", requireAuth, async (req, res) => {
   res.json(items.map(item => ({ id: String(item._id), category: item.category, creditor: item.creditor, amount: item.amount, status: item.status, adminNote: item.adminNote, createdAt: item.createdAt })));
 });
 
+app.post("/api/my/debts/:id/complement", requireAuth, upload.single("document"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Anexe o novo comprovante." });
+    if (!hasValidFileSignature(req.file)) return res.status(400).json({ error: "O conteúdo do arquivo não corresponde a PDF, JPG ou PNG válido." });
+    const item = await DebtRequest.findOne({ _id: req.params.id, user: req.session.sub, status: "needs_more_info" });
+    if (!item) return res.status(404).json({ error: "Solicitação não encontrada ou não está aguardando complemento." });
+    const replacement = await DebtDocument.create({
+      request: item._id, owner: req.session.sub, filename: path.basename(req.file.originalname).slice(0, 140),
+      contentType: req.file.mimetype, size: req.file.size, data: req.file.buffer
+    });
+    const previousId = item.document;
+    item.document = replacement._id;
+    item.status = "pending_review";
+    item.adminNote = "";
+    item.reviewedBy = null;
+    item.reviewedAt = null;
+    await item.save();
+    await DebtDocument.deleteOne({ _id: previousId });
+    res.json({ ok: true, message: "Novo comprovante enviado. A solicitação voltou para análise." });
+  } catch (error) {
+    console.error("complement:", error.message);
+    res.status(400).json({ error: error.message || "Não foi possível enviar o complemento." });
+  }
+});
 app.get("/api/admin/requests", requireAuth, requireAdmin, async (_req, res) => {
   const items = await DebtRequest.find().populate("user", "fullName phone phoneVerified city state").sort({ createdAt: -1 }).limit(200).lean();
   res.json(items.map(item => ({
