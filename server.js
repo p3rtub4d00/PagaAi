@@ -162,6 +162,9 @@ app.post("/api/debts", requireAuth, upload.single("document"), async (req, res) 
     if (!categories.includes(category) || !Number.isFinite(value) || value < 1 || value > 1000000 || !req.file) {
       return res.status(400).json({ error: "Informe a categoria, um valor válido e anexe o comprovante da dívida." });
     }
+    const signature = req.file.buffer;
+    const validSignature = req.file.mimetype === "application/pdf" ? signature.subarray(0, 5).toString() === "%PDF-" : req.file.mimetype === "image/jpeg" ? signature[0] === 255 && signature[1] === 216 && signature[2] === 255 : req.file.mimetype === "image/png" ? signature.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) : false;
+    if (!validSignature) return res.status(400).json({ error: "O conteúdo do arquivo não corresponde a PDF, JPG ou PNG válido." });
     const user = await User.findById(req.session.sub);
     if (!user) return res.status(401).json({ error: "Conta não encontrada." });
     const duplicate = await DebtRequest.findOne({ user: user._id, category, amount: value, status: { $in: ["pending_review", "needs_more_info", "approved"] } });
@@ -221,8 +224,10 @@ app.patch("/api/admin/requests/:id", requireAuth, requireAdmin, async (req, res)
   res.json({ ok: true, status: existing.status });
 });
 app.patch("/api/admin/users/:id/phone-verification", requireAuth, requireAdmin, async (req, res) => {
-  const user = await User.findByIdAndUpdate(req.params.id, { phoneVerified: Boolean(req.body?.verified) }, { new: true });
+  const verified = Boolean(req.body?.verified);
+  const user = await User.findByIdAndUpdate(req.params.id, { phoneVerified: verified }, { new: true });
   if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
+  if (!verified) await DebtRequest.updateMany({ user: user._id, status: "approved" }, { $set: { status: "pending_review", adminNote: "Telefone precisa ser confirmado novamente." } });
   res.json({ ok: true, phoneVerified: user.phoneVerified });
 });
 
@@ -244,7 +249,7 @@ async function start() {
           await User.create({
             fullName: process.env.ADMIN_NAME, cpf, phone: normalizePhone(process.env.ADMIN_PHONE || "00000000000"),
             city: "Administração", state: "RO", role: "admin", phoneVerified: true,
-            passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD, 12)
+            passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD, 12), termsAcceptedAt: new Date(), privacyNoticeVersion: "1.0"
           });
           console.log("Conta administrativa inicial criada.");
         } else if (admin.role !== "admin") { admin.role = "admin"; await admin.save(); }
