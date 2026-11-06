@@ -162,6 +162,17 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
     setSession(res, user); res.json({ user: publicUser(user) });
   } catch (error) { console.error("login:", error.message); res.status(500).json({ error: "Não foi possível entrar." }); }
 });
+app.post("/api/admin/login", authLimiter, async (req, res) => {
+  try {
+    const cpf = cleanCpf(req.body?.cpf), password = String(req.body?.password || "");
+    const user = await User.findOne({ cpf }).select("+cpf +passwordHash");
+    if (!user || !user.active || user.role !== "admin" || !(await bcrypt.compare(password, user.passwordHash))) {
+      return res.status(401).json({ error: "Credenciais administrativas inválidas. Use o CPF e a senha configurados para o administrador do PagaAi." });
+    }
+    setSession(res, user);
+    res.json({ user: publicUser(user) });
+  } catch (error) { console.error("admin login:", error.message); res.status(500).json({ error: "Não foi possível acessar a administração." }); }
+});
 app.post("/api/auth/logout", (_req, res) => {
   res.clearCookie(COOKIE_NAME, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/" }); res.json({ ok: true });
 });
