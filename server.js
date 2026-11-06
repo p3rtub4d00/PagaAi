@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const path = require("path");
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
@@ -37,6 +38,7 @@ app.use((req, _res, next) => {
   next();
 });
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." } });
+const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Limite de envios atingido. Tente novamente mais tarde." } });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE, files: 1 },
@@ -78,6 +80,7 @@ const documentSchema = new mongoose.Schema({
   filename: { type: String, required: true },
   contentType: { type: String, required: true, enum: ["application/pdf", "image/jpeg", "image/png"] },
   size: { type: Number, required: true, max: MAX_FILE_SIZE },
+  sha256: { type: String, required: true, index: true },
   data: { type: Buffer, required: true, select: false }
 }, { timestamps: true });
 
@@ -168,7 +171,7 @@ app.get("/api/auth/me", requireAuth, async (req, res) => {
   res.json({ user: publicUser(user) });
 });
 
-app.post("/api/debts", requireAuth, upload.single("document"), async (req, res) => {
+app.post("/api/debts", requireAuth, uploadLimiter, upload.single("document"), async (req, res) => {
   let createdDoc = null, createdRequest = null;
   try {
     if (req.session.role !== "beneficiary") return res.status(403).json({ error: "Somente beneficiários podem cadastrar pedidos." });
@@ -180,8 +183,12 @@ app.post("/api/debts", requireAuth, upload.single("document"), async (req, res) 
     if (!hasValidFileSignature(req.file)) return res.status(400).json({ error: "O conteúdo do arquivo não corresponde a PDF, JPG ou PNG válido." });
     const user = await User.findById(req.session.sub);
     if (!user) return res.status(401).json({ error: "Conta não encontrada." });
-    const duplicate = await DebtRequest.findOne({ user: user._id, category, amount: value, status: { $in: ["pending_review", "needs_more_info", "approved"] } });
-    if (duplicate) return res.status(409).json({ error: "Você já possui uma solicitação semelhante em análise ou aprovada. Consulte seu painel." });
+    const fileHash = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+    const duplicateDocument = await DebtDocument.findOne({ owner: user._id, sha256: fileHash });
+    if (duplicateDocument) {
+      const duplicateRequest = await DebtRequest.findOne({ _id: duplicateDocument.request, status: { $in: ["pending_review", "needs_more_info", "approved"] } });
+      if (duplicateRequest) return res.status(409).json({ error: "Este mesmo comprovante já foi enviado em uma solicitação ativa." });
+    }
     createdRequest = await DebtRequest.create({ user: user._id, category, creditor, amount: value, dueDate: dueDate ? new Date(dueDate) : null, description, document: new mongoose.Types.ObjectId() });
     createdDoc = await DebtDocument.create({
       _id: createdRequest.document, request: createdRequest._id, owner: user._id,
@@ -207,7 +214,7 @@ app.get("/api/my/debts", requireAuth, async (req, res) => {
   res.json(items.map(item => ({ id: String(item._id), category: item.category, creditor: item.creditor, amount: item.amount, status: item.status, adminNote: item.adminNote, createdAt: item.createdAt })));
 });
 
-app.post("/api/my/debts/:id/complement", requireAuth, upload.single("document"), async (req, res) => {
+app.post("/api/my/debts/:id/complement", requireAuth, uploadLimiter, upload.single("document"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Anexe o novo comprovante." });
     if (!hasValidFileSignature(req.file)) return res.status(400).json({ error: "O conteúdo do arquivo não corresponde a PDF, JPG ou PNG válido." });
@@ -215,7 +222,7 @@ app.post("/api/my/debts/:id/complement", requireAuth, upload.single("document"),
     if (!item) return res.status(404).json({ error: "Solicitação não encontrada ou não está aguardando complemento." });
     const replacement = await DebtDocument.create({
       request: item._id, owner: req.session.sub, filename: path.basename(req.file.originalname).slice(0, 140),
-      contentType: req.file.mimetype, size: req.file.size, data: req.file.buffer
+      contentType: req.file.mimetype, size: req.file.size, sha256: fileHash, data: req.file.buffer
     });
     const previousId = item.document;
     item.document = replacement._id;
@@ -243,7 +250,7 @@ app.get("/api/admin/documents/:id", requireAuth, requireAdmin, async (req, res) 
   const doc = await DebtDocument.findById(req.params.id).select("+data");
   if (!doc) return res.status(404).json({ error: "Documento não encontrado." });
   res.setHeader("Content-Type", doc.contentType);
-  res.setHeader("Content-Disposition", "inline; filename=" + encodeURIComponent(doc.filename));
+  res.setHeader("Content-Disposition", (doc.contentType === "application/pdf" ? "attachment" : "inline") + "; filename=" + encodeURIComponent(doc.filename));
   res.setHeader("Cache-Control", "no-store"); res.send(doc.data);
 });
 app.patch("/api/admin/requests/:id", requireAuth, requireAdmin, async (req, res) => {
