@@ -1,127 +1,61 @@
-const main = document.querySelector("main");
-const originalMain = main.innerHTML;
-const year = document.getElementById("year");
-if (year) year.textContent = new Date().getFullYear();
+(() => {
+const main=document.querySelector("main"); if(!main)return;
+const originalMain=main.innerHTML; let currentUser=null; const adminPath=location.pathname==="/admin";
+const menuButton=document.querySelector(".menu-toggle"), nav=document.querySelector(".topbar nav");
+if(menuButton&&nav)menuButton.addEventListener("click",()=>{const opened=nav.classList.toggle("nav-open");menuButton.setAttribute("aria-expanded",String(opened));menuButton.textContent=opened?"×":"☰";});
+if(nav)nav.addEventListener("click",event=>{if(event.target.closest("a")){nav.classList.remove("nav-open");menuButton?.setAttribute("aria-expanded","false");if(menuButton)menuButton.textContent="☰";}});
 
-const money = value => Number(value).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-const icon = (symbol, cls="") => `<span class="ui-icon ${cls}" aria-hidden="true">${symbol}</span>`;
-const requests = [
-  {id:1,kind:"Energia elétrica",title:"Conta de energia",city:"Porto Velho, RO",amount:684.32,desc:"Duas faturas em atraso. A família busca manter o fornecimento de energia.",symbol:"ϟ",tone:"amber",status:"Em análise"},
-  {id:2,kind:"Moradia",title:"Aluguel",city:"São Paulo, SP",amount:1200,desc:"Apoio para regularizar dois meses de aluguel.",symbol:"⌂",tone:"blue",status:"Em análise"},
-  {id:3,kind:"Saúde",title:"Tratamento médico",city:"Curitiba, PR",amount:3850,desc:"Despesa hospitalar apresentada para avaliação.",symbol:"✚",tone:"rose",status:"Em análise"}
-];
-
-function shell(content, active="") {
-  main.innerHTML = `
-    <div class="app-shell">
-      <aside class="app-sidebar">
-        <a class="brand" href="#" data-screen="home"><span class="brand-mark">♥</span><span>Paga<span>Ai</span></span></a>
-        <div class="sidebar-label">MENU PRINCIPAL</div>
-        <button class="side-link ${active==="overview"?"active":""}" data-screen="overview">▦ <span>Visão geral</span></button>
-        <button class="side-link ${active==="requests"?"active":""}" data-screen="requests">♡ <span>Pedidos de ajuda</span></button>
-        <button class="side-link ${active==="donations"?"active":""}" data-screen="donations">↗ <span>Minhas doações</span></button>
-        <button class="side-link" data-screen="profile">◉ <span>Meu perfil</span></button>
-        <div class="sidebar-bottom"><div class="sidebar-help"> <b>Precisa de ajuda?</b><small>Nosso time está aqui para orientar você.</small></div><button class="side-link" data-screen="home">↩ <span>Voltar ao site</span></button></div>
-      </aside>
-      <section class="app-main">
-        <header class="app-topbar"><button class="mobile-back" data-screen="home">←</button><div><small>ÁREA DO USUÁRIO</small><b>Olá! Que bom ter você aqui.</b></div><div class="avatar">PA</div></header>
-        <div class="app-content">${content}</div>
-      </section>
-    </div>`;
+const states="AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(" ");
+const categories=["Energia Elétrica","Água","Aluguel","Tratamento Médico","Alimentação","Educação","Outro"];
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const status=s=>({pending_review:"Aguardando análise",needs_more_info:"Precisa de complemento",approved:"Aprovado",rejected:"Não aprovado",paid:"Quitação confirmada"}[s]||s);
+async function api(url,opts){const r=await fetch(url,Object.assign({credentials:"same-origin"},opts||{}));const j=(r.headers.get("content-type")||"").includes("application/json")?await r.json():null;if(!r.ok)throw Error(j&&j.error||"Não foi possível concluir.");return j;}
+function auth(mode,admin){
+ const reg=mode==="register"&&!admin;
+ let h='<div class="pa-auth-page"><a class="brand" href="/" data-home><span class="brand-mark">♥</span><span>Paga<span>Ai</span></span></a><section class="pa-auth-card"><span class="eyebrow">'+(admin?"ACESSO RESTRITO":"ÁREA SEGURA DO PAGAAI")+'</span><h1>'+(admin?"Acesso administrativo":reg?"Crie sua conta":"Acesse sua conta")+'</h1><p>'+(admin?"Entre com suas credenciais administrativas.":"Seus dados serão usados para proteger e acompanhar sua solicitação.")+'</p>';
+ if(!admin)h+='<div class="pa-tabs"><button class="'+(reg?"active":"")+'" data-auth-mode="register">Criar conta</button><button class="'+(!reg?"active":"")+'" data-auth-mode="login">Entrar</button></div>';
+ h+='<form id="pa-auth-form" class="pa-form">';
+ if(reg)h+='<label>Nome completo<input name="fullName" required minlength="5" maxlength="120" autocomplete="name"></label><label>CPF<input name="cpf" required inputmode="numeric" maxlength="14" placeholder="000.000.000-00"></label><label>Telefone com DDD<input name="phone" required inputmode="tel" maxlength="16" placeholder="(69) 99999-9999"></label><label class="pa-consent"><input type="checkbox" name="termsAccepted" value="true" required> Li e aceito os <a href="/termos" target="_blank" rel="noopener">Termos de Uso</a> e o <a href="/privacidade" target="_blank" rel="noopener">Aviso de Privacidade</a>, inclusive o tratamento dos dados e documentos para análise.</label><div class="pa-two"><label>Cidade<input name="city" required maxlength="80"></label><label>UF<select name="state" required><option value="">UF</option>'+states.map(s=>'<option>'+s+'</option>').join("")+'</select></label></div>';
+ if(!reg)h+='<label>CPF<input name="cpf" required inputmode="numeric" maxlength="14" placeholder="Seu CPF"></label>';h+='<label>Senha<input name="password" type="password" required minlength="'+(reg?10:1)+'" autocomplete="'+(reg?"new-password":"current-password")+'" placeholder="'+(reg?"Mínimo de 10 caracteres":"Sua senha")+'"></label><button class="pa-btn pa-primary pa-full" type="submit">'+(reg?"Criar conta e continuar":"Entrar")+'</button><div id="pa-feedback" role="status"></div></form>';
+ if(reg)h+='<p class="pa-privacy">O CPF é validado matematicamente, mas isso não confirma a identidade na Receita Federal. O telefone precisa de confirmação antes da aprovação final.</p>';
+ main.innerHTML=h+'</section></div>';
 }
-function requestCards() {
- return requests.map(r=>`<article class="dashboard-request"><div class="dash-request-icon ${r.tone}">${r.symbol}</div><div class="dash-request-copy"><span class="status status-pending">${r.status}</span><h3>${r.title}</h3><p>${r.city} · ${r.desc}</p><b>${money(r.amount)}</b></div><button class="btn btn-green btn-small" data-contribute="${r.id}">Quero ajudar</button></article>`).join("");
-}
-function renderOverview() {
- shell(`
-  <div class="welcome-row"><div><span class="eyebrow">SEU PAINEL PAGAai</span><h1>Visão geral</h1><p>Acompanhe suas contribuições e encontre pedidos que precisam de apoio.</p></div><button class="btn btn-primary" data-screen="requests">Encontrar pedidos <span>→</span></button></div>
-  <div class="dashboard-grid">
-   <article class="balance-card"><span>Carteira demonstrativa</span><h2>R$ 5.000,00</h2><p>Valor ilustrativo — não representa saldo real ou disponível para saque.</p><button class="btn btn-white" data-screen="donations">Ver minhas doações</button></article>
-   <article class="metric-card"><span class="metric-symbol blue">♡</span><small>Contribuições realizadas</small><strong>08</strong><em>Exemplo demonstrativo</em></article>
-   <article class="metric-card"><span class="metric-symbol green">✓</span><small>Histórias apoiadas</small><strong>05</strong><em>Exemplo demonstrativo</em></article>
-  </div>
-  <div class="content-heading"><div><h2>Pedidos que precisam de você</h2><p>Conheça solicitações em análise.</p></div><button class="text-button" data-screen="requests">Ver todos →</button></div>
-  <div class="dashboard-list">${requestCards()}</div>
-  <div class="notice-box">🔒 <div><b>Segurança em primeiro lugar</b><p>Antes de uma contribuição real, a plataforma exibirá a comprovação da dívida e o destino do pagamento. Pagamentos ainda não estão habilitados nesta versão.</p></div></div>
- `,"overview");
-}
-function renderRequests() {
- shell(`<div class="welcome-row"><div><span class="eyebrow">SOLIDARIEDADE EM AÇÃO</span><h1>Pedidos de ajuda</h1><p>Veja solicitações ilustrativas e entenda como a contribuição funcionará.</p></div></div>
- <div class="filter-row"><button class="filter-chip selected">Todas</button><button class="filter-chip">Energia</button><button class="filter-chip">Moradia</button><button class="filter-chip">Saúde</button></div>
- <div class="dashboard-list">${requestCards()}</div><p class="demo-note">Os pedidos desta demonstração não correspondem a beneficiários reais e não aceitam pagamentos.</p>`,"requests");
-}
-function renderDonations() {
- shell(`<div class="welcome-row"><div><span class="eyebrow">SEU HISTÓRICO</span><h1>Minhas doações</h1><p>Visualize o histórico de contribuições da sua conta.</p></div></div>
- <div class="empty-state surface"><div class="empty-symbol">♡</div><h2>Nenhuma doação registrada</h2><p>Quando o fluxo de pagamentos for ativado, suas contribuições confirmadas aparecerão aqui.</p><button class="btn btn-primary" data-screen="requests">Conhecer pedidos</button></div>`,"donations");
-}
-function renderProfile() {
- shell(`<div class="welcome-row"><div><span class="eyebrow">DADOS DA CONTA</span><h1>Meu perfil</h1><p>Área demonstrativa. O cadastro e a autenticação serão integrados em etapa própria.</p></div></div>
- <div class="surface profile-panel"><div class="profile-avatar">PA</div><div><h2>Visitante PagaAi</h2><p>Você está visualizando uma demonstração sem conta autenticada.</p><span class="status status-pending">Sessão demonstrativa</span></div></div>`,"profile");
-}
-function renderBeneficiary() {
- main.innerHTML = `<div class="form-page"><header class="form-page-head"><a class="brand" href="#" data-screen="home"><span class="brand-mark">♥</span><span>Paga<span>Ai</span></span></a><button class="btn btn-light" data-screen="home">Voltar ao início</button></header>
- <div class="debt-layout"><section class="surface debt-form-card"><span class="eyebrow">SOLICITAÇÃO DE APOIO</span><h1>Conte como podemos ajudar</h1><p>Preencha os dados iniciais da dívida. O envio não garante aprovação ou quitação.</p>
- <form id="full-debt-form" class="full-debt-form">
- <label>Nome completo<input class="field" name="applicantName" required maxlength="100" placeholder="Seu nome"></label>
- <div class="form-grid-2"><label>Cidade<input class="field" name="city" required placeholder="Sua cidade"></label><label>Estado<select class="field" name="state" required><option value="">UF</option>${["RO","AC","AM","AP","PA","TO","MT","MS","GO","DF","SP","RJ","MG","ES","PR","SC","RS","BA","SE","AL","PE","PB","RN","CE","PI","MA"].map(s=>`<option>${s}</option>`).join("")}</select></label></div>
- <label>Tipo de dívida<select class="field" name="category" required><option value="">Selecione uma categoria</option><option>Energia Elétrica</option><option>Água</option><option>Aluguel</option><option>Tratamento Médico</option><option>Alimentação</option><option>Educação</option><option>Outro</option></select></label>
- <label>Valor total da dívida<input class="field" name="amount" type="number" min="1" max="1000000" step="0.01" required placeholder="R$ 0,00"></label>
- <label>Descreva sua situação<textarea class="field" name="description" rows="4" maxlength="1200" placeholder="Explique brevemente por que precisa de apoio."></textarea></label>
- <div class="upload-placeholder">☁ <div><b>Comprovante da dívida</b><small>O envio seguro de documentos será habilitado após a implementação do armazenamento privado.</small></div><span class="status status-pending">Em breve</span></div>
- <button class="btn btn-primary btn-full" type="submit">Enviar para análise →</button><p class="privacy-note">🔒 Seus dados devem ser utilizados apenas para análise da solicitação, conforme a política de privacidade e a LGPD.</p><div id="form-feedback" role="status"></div>
- </form></section><aside class="surface security-card"><div class="security-icon">♢</div><h2>Seus dados merecem proteção</h2><p>As informações pessoais e documentos de comprovação exigem acesso restrito, armazenamento seguro e tratamento transparente.</p><ul><li>Uso limitado à análise da solicitação</li><li>Documentos não devem ficar públicos</li><li>Você deve poder solicitar acesso e correção</li></ul></aside></div></div>`;
-}
-function renderAdmin() {
- main.innerHTML = `<div class="admin-layout"><aside class="admin-sidebar"><a class="admin-brand" href="#" data-screen="home">♥ PagaAi <small>ADMINISTRAÇÃO</small></a><nav><button class="admin-nav active">▦ Dashboard</button><button class="admin-nav">♡ Pedidos de ajuda</button><button class="admin-nav">↗ Doações</button><button class="admin-nav">▣ Pagamentos</button><button class="admin-nav">♙ Usuários</button><button class="admin-nav">▤ Relatórios</button><button class="admin-nav">⚙ Configurações</button></nav><button class="admin-exit" data-screen="home">↩ Voltar ao site</button></aside>
- <section class="admin-main"><header class="admin-header"><div><small>PAINEL ADMINISTRATIVO</small><h1>Dashboard</h1></div><span class="status status-pending">Dados demonstrativos</span></header>
- <div class="admin-metrics"><article><small>Pessoas ajudadas</small><strong>—</strong><em>Aguardando dados reais</em></article><article><small>Dívidas quitadas</small><strong>—</strong><em>Aguardando confirmação</em></article><article><small>Doações realizadas</small><strong>—</strong><em>Aguardando pagamentos</em></article><article><small>Avaliação média</small><strong>—</strong><em>Sem avaliações</em></article></div>
- <div class="admin-panels"><article class="surface admin-chart"><h2>Impacto das doações</h2><p>O gráfico será alimentado por transações confirmadas.</p><div class="chart-placeholder"><span>Sem dados reais para exibir</span><svg viewBox="0 0 600 150" role="img" aria-label="Área reservada para gráfico de impacto"><path d="M10 120H590M10 80H590M10 40H590" stroke="#e5ebf4" stroke-dasharray="4 5" fill="none"/></svg></div></article><article class="surface admin-actions"><h2>Últimas ações</h2><div class="empty-admin">Nenhuma ação registrada.</div></article></div>
- <div class="notice-box">🔐 <div><b>Área administrativa em construção</b><p>Esta tela é apenas uma prévia visual. O painel real precisa de login, controle de permissões, auditoria e endpoints protegidos no servidor antes de ser disponibilizado.</p></div></div></section></div>`;
-}
-function showSuccess() {
- main.innerHTML = `<div class="success-page"><div class="success-card surface"><div class="success-check">✓</div><span class="eyebrow">PAGAAI AGRADECE</span><h1>Obrigado por querer ajudar!</h1><p>Você chegou à etapa de confirmação. A contribuição financeira ainda não está habilitada nesta versão demonstrativa.</p><div class="success-summary"><span>Próximo passo</span><b>Integração segura com o meio de pagamento</b><small>Nenhum valor foi cobrado.</small></div><button class="btn btn-primary" data-screen="home">Voltar ao início</button></div></div>`;
-}
-function goHome() { main.innerHTML = originalMain; const y=document.getElementById("year"); if(y)y.textContent=new Date().getFullYear(); window.scrollTo(0,0); }
-document.addEventListener("click", event => {
- const screen = event.target.closest("[data-screen]");
- if (screen) {
-   event.preventDefault();
-   const value=screen.dataset.screen;
-   if(value==="home") goHome();
-   else if(value==="beneficiary") renderBeneficiary();
-   else if(value==="admin") renderAdmin();
-   else if(value==="requests") renderRequests();
-   else if(value==="donations") renderDonations();
-   else if(value==="profile") renderProfile();
-   else renderOverview();
-   window.scrollTo(0,0);
- }
- const role=event.target.closest("[data-role]");
- if(role) {
-   if(role.dataset.role==="beneficiary") renderBeneficiary();
-   else renderOverview();
-   window.scrollTo(0,0);
- }
- const help=event.target.closest("[data-help],[data-contribute]");
- if(help) { showSuccess(); window.scrollTo(0,0); }
- const adminShortcut=event.target.closest("[data-admin-preview]");
- if(adminShortcut) renderAdmin();
+function frame(title,body){main.innerHTML='<div class="pa-app"><header class="pa-head"><a class="brand" href="/" data-home><span class="brand-mark">♥</span><span>Paga<span>Ai</span></span></a><div class="pa-head-right"><span>'+esc(currentUser&&currentUser.fullName||"PagaAi")+'</span><button class="pa-btn pa-light" data-logout>Sair</button></div></header><div class="pa-wrap"><div class="pa-page-title"><span class="eyebrow">PAGAAI · '+esc(title.toUpperCase())+'</span><h1>'+esc(title)+'</h1></div>'+body+'</div></div>';}
+function debtForm(){frame("Cadastrar uma dívida",'<div class="pa-columns"><section class="pa-panel"><h2>Conte como podemos ajudar</h2><p>Uma solicitação por dívida. O documento será armazenado de forma privada e ficará disponível apenas à equipe autorizada.</p><form id="pa-debt-form" class="pa-form" enctype="multipart/form-data"><label>Tipo de dívida<select name="category" required><option value="">Selecione</option>'+categories.map(c=>'<option>'+c+'</option>').join("")+'</select></label><label>Credor ou empresa (opcional)<input name="creditor" maxlength="120" placeholder="Ex.: concessionária, escola, clínica"></label><div class="pa-two"><label>Valor total (R$)<input name="amount" type="number" min="1" max="1000000" step="0.01" required></label><label>Vencimento (se houver)<input name="dueDate" type="date"></label></div><label>Explique sua situação<textarea name="description" rows="4" maxlength="1200"></textarea></label><label class="pa-upload">Comprovante obrigatório<input type="file" name="document" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required><small>PDF, JPG ou PNG · até 5 MB. Envie fatura, boleto ou documento emitido pelo credor.</small></label><div class="pa-alert">O documento será privado, mas ficará acessível à equipe autorizada para conferência.</div><button class="pa-btn pa-primary pa-full" type="submit">Enviar para análise</button><div id="pa-feedback" role="status"></div></form></section><aside class="pa-panel pa-side"><div class="pa-lock">♢</div><h3>Como comprovar sua dívida</h3><ul><li><b>Energia ou água:</b> fatura ou segunda via.</li><li><b>Aluguel:</b> boleto, recibo ou cobrança.</li><li><b>Saúde:</b> orçamento, boleto ou cobrança da instituição.</li><li><b>Educação:</b> boleto ou demonstrativo escolar.</li><li><b>Outros:</b> documento que identifique credor e valor.</li></ul><h3>Etapas</h3><ol><li>Cadastro e envio do comprovante.</li><li>Análise pela equipe PagaAi.</li><li>Aprovação, reprovação ou pedido de complemento.</li></ol></aside></div>');}
+async function myRequests(){frame("Minhas solicitações",'<section class="pa-panel"><div class="pa-panel-head"><div><h2>Acompanhe seus pedidos</h2><p>Consulte o andamento e as orientações da equipe.</p></div><button class="pa-btn pa-primary" data-new-request>Novo pedido</button></div><div id="pa-my-list">Carregando...</div></section>');try{const a=await api("/api/my/debts");const el=document.getElementById("pa-my-list");el.innerHTML=a.length?'<div class="pa-request-list">'+a.map(x=>'<article class="pa-request-row"><div><span class="pa-status '+esc(x.status)+'">'+esc(status(x.status))+'</span><h3>'+esc(x.category)+'</h3><small>Enviado em '+new Date(x.createdAt).toLocaleDateString("pt-BR")+'</small>'+(x.adminNote?'<p class="pa-admin-note">Orientação: '+esc(x.adminNote)+'</p>':"")+(x.status==="needs_more_info"?'<form class="pa-complement-form" data-complement-form="'+esc(x.id)+'" enctype="multipart/form-data"><label>Novo comprovante <input type="file" name="document" accept=".pdf,.jpg,.jpeg,.png" required></label><button class="pa-btn pa-primary" type="submit">Enviar complemento</button></form>':"")+'</div><strong>'+money(x.amount)+'</strong></article>').join("")+'</div>':'<div class="pa-empty"><h3>Nenhuma solicitação cadastrada</h3><button class="pa-btn pa-primary" data-new-request>Cadastrar primeira dívida</button></div>';}catch(e){document.getElementById("pa-my-list").textContent=e.message;}}
+function dashboard(){frame("Área do beneficiário",'<div class="pa-dashboard-cards"><article class="pa-panel"><span class="eyebrow">SUA CONTA</span><h2>Olá, '+esc((currentUser.fullName||"").split(" ")[0])+'</h2><p>Cadastre uma dívida, anexe o comprovante e acompanhe a análise.</p><button class="pa-btn pa-primary" data-new-request>Cadastrar uma dívida</button></article><article class="pa-panel"><span class="eyebrow">DADOS CADASTRAIS</span><h2>'+esc(currentUser.city)+' · '+esc(currentUser.state)+'</h2><p>Telefone: '+esc(currentUser.phone)+'</p><span class="pa-status '+(currentUser.phoneVerified?"approved":"needs_more_info")+'">'+(currentUser.phoneVerified?"Telefone confirmado":"Telefone aguardando confirmação")+'</span></article></div><section class="pa-panel"><div class="pa-panel-head"><div><h2>Seus pedidos</h2><p>Consulte status e eventuais orientações.</p></div><button class="pa-btn pa-light" data-my-requests>Ver solicitações</button></div></section>');}
+async function admin(){frame("Painel administrativo",'<section class="pa-panel"><div class="pa-panel-head"><div><h2>Fila de análise</h2><p>Dados pessoais e documentos são exibidos somente nesta área restrita.</p></div><button class="pa-btn pa-light" data-admin-refresh>Atualizar</button></div><div id="pa-admin-list">Carregando solicitações...</div></section>');try{const a=await api("/api/admin/requests"),el=document.getElementById("pa-admin-list");if(!a.length){el.innerHTML='<div class="pa-empty">Nenhuma solicitação cadastrada.</div>';return;}el.innerHTML='<div class="pa-admin-list">'+a.map(x=>'<article class="pa-admin-item"><div class="pa-admin-top"><div><span class="pa-status '+esc(x.status)+'">'+esc(status(x.status))+'</span><h3>'+esc(x.fullName)+'</h3><small>'+esc(x.city)+' · '+esc(x.state)+' · '+esc(x.phone)+'</small></div><strong>'+money(x.amount)+'</strong></div><div class="pa-admin-meta"><span>'+esc(x.category)+'</span>'+(x.creditor?'<span>Credor: '+esc(x.creditor)+'</span>':"")+'<span>Recebido: '+new Date(x.createdAt).toLocaleString("pt-BR")+'</span></div><p>'+esc(x.description||"Sem descrição complementar.")+'</p><div class="pa-admin-actions"><button class="pa-btn pa-light" data-document="'+esc(x.documentId)+'">Abrir comprovante</button><button class="pa-btn pa-light" data-phone-user="'+esc(x.userId)+'" data-verified="'+(!x.phoneVerified)+'">'+(x.phoneVerified?"Remover confirmação do telefone":"Confirmar telefone (após contato)")+'</button></div><label class="pa-admin-note-field">Observação para o solicitante<textarea rows="2" data-note="'+esc(x.id)+'">'+esc(x.adminNote||"")+'</textarea></label><div class="pa-admin-actions"><button class="pa-btn pa-green" data-review="'+esc(x.id)+'" data-status="approved">Aprovar e publicar</button><button class="pa-btn pa-warn" data-review="'+esc(x.id)+'" data-status="needs_more_info">Solicitar complemento</button><button class="pa-btn pa-danger" data-review="'+esc(x.id)+'" data-status="rejected">Reprovar</button></div></article>').join("")+'</div>';}catch(e){document.getElementById("pa-admin-list").innerHTML='<div class="pa-error">'+esc(e.message)+'</div>';}}
+function home(){main.innerHTML=originalMain;const y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();}
+document.addEventListener("click",async e=>{const t=e.target.closest("button,a");if(!t)return;
+ if(t.hasAttribute("data-home")){e.preventDefault();home();return;}
+ if(t.hasAttribute("data-role")){e.preventDefault();if(t.dataset.role==="donor"){main.innerHTML='<div class="pa-auth-page"><section class="pa-auth-card"><span class="eyebrow">CONTRIBUIÇÕES</span><h1>Área de doações em preparação</h1><p>O cadastro de beneficiários e a análise documental estão sendo estruturados primeiro. As contribuições serão liberadas somente após integração e validação do fluxo de pagamento.</p><button class="pa-btn pa-primary pa-full" data-home>Voltar ao início</button></section></div>';}else auth("register",false);return;}
+ if(t.dataset.authMode){auth(t.dataset.authMode,false);return;}
+ if(t.hasAttribute("data-new-request")){debtForm();return;}
+ if(t.hasAttribute("data-my-requests")){myRequests();return;}
+ if(t.hasAttribute("data-logout")){try{await api("/api/auth/logout",{method:"POST"});}catch{}currentUser=null;auth("login",adminPath);return;}
+ if(t.hasAttribute("data-admin-refresh")){admin();return;}
+ if(t.dataset.document){window.open("/api/admin/documents/"+encodeURIComponent(t.dataset.document),"_blank","noopener");return;}
+ if(t.dataset.phoneUser){try{await api("/api/admin/users/"+encodeURIComponent(t.dataset.phoneUser)+"/phone-verification",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({verified:t.dataset.verified==="true"})});admin();}catch(err){alert(err.message);}return;}
+ if(t.dataset.review){const id=t.dataset.review,note=document.querySelector('[data-note="'+CSS.escape(id)+'"]')?.value||"";if(!confirm("Confirmar: "+status(t.dataset.status)+"?"))return;try{await api("/api/admin/requests/"+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:t.dataset.status,note})});admin();}catch(err){alert(err.message);}return;}
 });
-document.addEventListener("submit", async event=>{
- if(event.target.id!=="full-debt-form") return;
- event.preventDefault();
- const formEl=event.target, feedback=document.getElementById("form-feedback");
- const data=Object.fromEntries(new FormData(formEl).entries());
- data.state=String(data.state||"").toUpperCase(); data.amount=Number(data.amount);
- feedback.textContent="Enviando solicitação...";
- try {
-   const response=await fetch("/api/debts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
-   const result=await response.json();
-   if(!response.ok) throw new Error(result.error||"Não foi possível enviar.");
-   feedback.className="success-feedback"; feedback.textContent="Solicitação registrada. Ela ainda precisará passar por análise e verificação documental.";
-   formEl.reset();
- } catch(error) {
-   feedback.className="error-feedback";
-   feedback.textContent=error.message.includes("Failed to fetch")?"Não foi possível conectar à API. Verifique a conexão com o servidor e o MongoDB.":error.message;
- }
-});
+document.addEventListener("submit",async e=>{if(e.target.id==="pa-auth-form"){e.preventDefault();const f=e.target,d=Object.fromEntries(new FormData(f).entries()),reg=!!f.querySelector('[name="fullName"]'),feedback=document.getElementById("pa-feedback");feedback.textContent="Processando...";try{const r=await api(reg?"/api/auth/register":"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});currentUser=r.user;if(currentUser.role==="admin")admin();else dashboard();}catch(err){feedback.className="pa-error";feedback.textContent=err.message;}}
+ if(e.target.matches("[data-complement-form]")){e.preventDefault();const f=e.target,id=f.dataset.complementForm,fd=new FormData(f);const b=f.querySelector("button");b.disabled=true;b.textContent="Enviando...";try{await api("/api/my/debts/"+encodeURIComponent(id)+"/complement",{method:"POST",body:fd});myRequests();}catch(err){b.disabled=false;b.textContent="Enviar complemento";alert(err.message);}}
+ if(e.target.id==="pa-debt-form"){e.preventDefault();const f=e.target,feedback=document.getElementById("pa-feedback");feedback.textContent="Enviando e armazenando o comprovante...";try{const r=await api("/api/debts",{method:"POST",body:new FormData(f)});feedback.className="pa-success";feedback.textContent=r.message;f.reset();setTimeout(myRequests,900);}catch(err){feedback.className="pa-error";feedback.textContent=err.message;}}});
+async function loadPublicRequests(){
+ const grid=document.getElementById("request-grid");if(!grid)return;
+ const section=document.querySelector(".requests-section");
+ try{
+  const items=await api("/api/debts");
+  const heading=section&&section.querySelector(".section-heading h2");
+  if(heading)heading.textContent="Pedidos de ajuda aprovados";
+  const preview=section&&section.querySelector(".preview-label");if(preview)preview.hidden=true;
+  const note=section&&section.querySelector(".demo-note");
+  if(!items.length){grid.innerHTML='<div class="pa-empty"><h3>Ainda não há pedidos aprovados</h3><p>Quando uma solicitação passar pela análise e confirmação de telefone, ela aparecerá aqui.</p></div>';if(note)note.hidden=true;return;}
+  grid.innerHTML=items.map(x=>'<article class="request-card"><div class="request-top"><span class="verified">Documento verificado</span><span class="location">'+esc(x.city)+' · '+esc(x.state)+'</span></div><div class="request-body"><div class="request-info"><h3>'+esc(x.category)+'</h3><strong>'+money(x.amount)+'</strong><small>Solicitação aprovada</small></div></div><p class="public-request-description">'+esc(x.description||"Solicitação analisada pela equipe PagaAi.")+'</p><small class="public-request-date">Publicado em '+new Date(x.createdAt).toLocaleDateString("pt-BR")+'</small></article>').join("");
+  if(note)note.hidden=true;
+ }catch{grid.innerHTML='<div class="pa-empty"><h3>Não foi possível carregar os pedidos</h3><p>Tente novamente em instantes.</p></div>';}
+}
+async function boot(){if(adminPath){auth("login",true);return;}try{const r=await api("/api/auth/me");currentUser=r.user;if(currentUser.role==="admin")admin();else dashboard();}catch{loadPublicRequests();}}
+boot();
+})();

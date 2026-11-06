@@ -91,21 +91,6 @@
       <button class="btn btn-primary btn-full" type="submit">Enviar solicitação →</button><small class="form-privacy">Seus dados serão tratados com cuidado. A documentação comprobatória será solicitada em uma etapa segura.</small>
     </form><div id="modal-content" class="modal-options"><button class="btn btn-primary btn-full" data-role="donor">Quero ajudar</button><button class="btn btn-green btn-full" data-role="beneficiary">Preciso de ajuda</button></div><div id="toast" role="status"></div></section></div>
   <script src="/app.js"></script>
-  <script>
-    const menuButton = document.querySelector('.menu-toggle');
-    const nav = document.querySelector('.topbar nav');
-    if (menuButton && nav) menuButton.addEventListener('click', () => {
-      const opened = nav.classList.toggle('nav-open');
-      menuButton.setAttribute('aria-expanded', String(opened));
-      menuButton.textContent = opened ? '×' : '☰';
-    });
-    if (nav) nav.addEventListener('click', event => {
-      if (event.target.closest('a')) {
-        nav.classList.remove('nav-open');
-        menuButton?.setAttribute('aria-expanded', 'false');
-        if (menuButton) menuButton.textContent = '☰';
-      }
-    });
-  </script>
+
 </body>
 </html>
