@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0757e8">
   <meta name="description" content="PagaAi conecta pessoas que querem ajudar a quem precisa quitar dívidas essenciais.">
@@ -15,7 +15,7 @@
   <header class="topbar">
     <a class="brand" href="#"><span class="brand-mark">♥</span><span>Paga<span>Ai</span></span></a>
     <nav><a href="#inicio">Início</a><a href="#como-funciona">Como funciona</a><a href="#impacto">Impacto</a><a href="#pedidos">Pedidos</a></nav>
-    <div class="top-actions"><button class="btn btn-light" data-open="login">Entrar</button><button class="btn btn-primary" data-open="signup">Cadastrar</button></div>
+    <div class="top-actions"><button class="btn btn-light" data-screen="overview">Entrar</button><button class="btn btn-primary" data-role="beneficiary">Cadastrar</button></div>
     <button class="menu-toggle" aria-label="Abrir menu">☰</button>
   </header>
 
@@ -63,7 +63,7 @@
       <div class="impact-metrics"><div><strong>250.842</strong><small>Pessoas ajudadas</small></div><div><strong>R$ 48,7 mi</strong><small>Em dívidas quitadas</small></div><div><strong>12.843</strong><small>Doações realizadas</small></div><div><strong>4,9/5</strong><small>Avaliação média</small></div></div>
     </section>
 
-    <footer><a class="brand" href="#"><span class="brand-mark">♥</span><span>Paga<span>Ai</span></span></a><p>Quem pode, ajuda. Quem precisa, recebe.</p><small>© <span id="year"></span> PagaAi. Solidariedade com transparência.</small></footer>
+    <footer><a class="brand" href="#"><span class="brand-mark">♥</span><span>Paga<span>Ai</span></span></a><p>Quem pode, ajuda. Quem precisa, recebe.</p><button class="btn btn-light" data-screen="admin">Prévia do painel administrativo</button><small>© <span id="year"></span> PagaAi. Solidariedade com transparência.</small></footer>
   </main>
 
   <div class="modal-backdrop" id="modal" aria-hidden="true"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" id="modal-close" aria-label="Fechar">×</button><div class="modal-brand"><span class="brand-mark">♥</span> PagaAi</div><h2 id="modal-title">Vamos começar?</h2><p id="modal-description">Escolha como deseja participar.</p><form id="debt-form" class="hidden">
