@@ -38,6 +38,20 @@ document.addEventListener("click",async e=>{const t=e.target.closest("button,a")
 document.addEventListener("submit",async e=>{if(e.target.id==="pa-auth-form"){e.preventDefault();const f=e.target,d=Object.fromEntries(new FormData(f).entries()),reg=!!f.querySelector('[name="fullName"]'),feedback=document.getElementById("pa-feedback");feedback.textContent="Processando...";try{const r=await api(reg?"/api/auth/register":"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});currentUser=r.user;if(currentUser.role==="admin")admin();else dashboard();}catch(err){feedback.className="pa-error";feedback.textContent=err.message;}}
  if(e.target.matches("[data-complement-form]")){e.preventDefault();const f=e.target,id=f.dataset.complementForm,fd=new FormData(f);const b=f.querySelector("button");b.disabled=true;b.textContent="Enviando...";try{await api("/api/my/debts/"+encodeURIComponent(id)+"/complement",{method:"POST",body:fd});myRequests();}catch(err){b.disabled=false;b.textContent="Enviar complemento";alert(err.message);}}
  if(e.target.id==="pa-debt-form"){e.preventDefault();const f=e.target,feedback=document.getElementById("pa-feedback");feedback.textContent="Enviando e armazenando o comprovante...";try{const r=await api("/api/debts",{method:"POST",body:new FormData(f)});feedback.className="pa-success";feedback.textContent=r.message;f.reset();setTimeout(myRequests,900);}catch(err){feedback.className="pa-error";feedback.textContent=err.message;}}});
-async function boot(){if(adminPath){auth("login",true);return;}try{const r=await api("/api/auth/me");currentUser=r.user;if(currentUser.role==="admin")admin();else dashboard();}catch{}}
+async function loadPublicRequests(){
+ const grid=document.getElementById("request-grid");if(!grid)return;
+ const section=document.querySelector(".requests-section");
+ try{
+  const items=await api("/api/debts");
+  const heading=section&&section.querySelector(".section-heading h2");
+  if(heading)heading.textContent="Pedidos de ajuda aprovados";
+  const preview=section&&section.querySelector(".preview-label");if(preview)preview.hidden=true;
+  const note=section&&section.querySelector(".demo-note");
+  if(!items.length){grid.innerHTML='<div class="pa-empty"><h3>Ainda não há pedidos aprovados</h3><p>Quando uma solicitação passar pela análise e confirmação de telefone, ela aparecerá aqui.</p></div>';if(note)note.hidden=true;return;}
+  grid.innerHTML=items.map(x=>'<article class="request-card"><div class="request-top"><span class="verified">Documento verificado</span><span class="location">'+esc(x.city)+' · '+esc(x.state)+'</span></div><div class="request-body"><div class="request-info"><h3>'+esc(x.category)+'</h3><strong>'+money(x.amount)+'</strong><small>Solicitação aprovada</small></div></div><p class="public-request-description">'+esc(x.description||"Solicitação analisada pela equipe PagaAi.")+'</p><small class="public-request-date">Publicado em '+new Date(x.createdAt).toLocaleDateString("pt-BR")+'</small></article>').join("");
+  if(note)note.hidden=true;
+ }catch{grid.innerHTML='<div class="pa-empty"><h3>Não foi possível carregar os pedidos</h3><p>Tente novamente em instantes.</p></div>';}
+}
+async function boot(){if(adminPath){auth("login",true);return;}try{const r=await api("/api/auth/me");currentUser=r.user;if(currentUser.role==="admin")admin();else dashboard();}catch{loadPublicRequests();}}
 boot();
 })();
