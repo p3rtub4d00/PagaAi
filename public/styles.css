@@ -224,3 +224,5 @@ body.landing-page{background:#f8fafc;color:var(--ink)}
 .pa-consent{display:flex!important;grid-template-columns:18px 1fr;align-items:start;gap:9px!important;padding:11px;border:1px solid #dbe5f2;border-radius:10px;background:#f8fbff;font-size:10px!important;line-height:1.5}.pa-consent input{width:16px;height:16px;margin:1px 0 0;accent-color:#2563eb}
 
 .pa-complement-form{display:grid;gap:8px;margin-top:12px;padding:12px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa}.pa-complement-form label{display:grid;gap:6px;font-size:10px;font-weight:800;color:#9a3412}.pa-complement-form input{font-size:10px;max-width:100%}.pa-complement-form .pa-btn{justify-self:start}
+
+.public-request-description{font-size:11px;line-height:1.6;color:#64748b;margin:14px 0 8px}.public-request-date{font-size:9px;color:#94a3b8}
