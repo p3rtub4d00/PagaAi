@@ -231,6 +231,11 @@ app.patch("/api/admin/users/:id/phone-verification", requireAuth, requireAdmin, 
   res.json({ ok: true, phoneVerified: user.phoneVerified });
 });
 
+app.use((error, _req, res, _next) => {
+  console.error("Falha na requisição:", error.message);
+  const tooLarge = error.code === "LIMIT_FILE_SIZE";
+  res.status(tooLarge ? 413 : 400).json({ error: tooLarge ? "O arquivo ultrapassa o limite de 5 MB." : error.message || "Não foi possível processar a solicitação." });
+});
 app.get("/admin", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
