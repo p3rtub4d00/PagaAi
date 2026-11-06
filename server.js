@@ -43,6 +43,8 @@ const userSchema = new mongoose.Schema({
   cpf: { type: String, required: true, unique: true, select: false },
   phone: { type: String, required: true },
   phoneVerified: { type: Boolean, default: false },
+  termsAcceptedAt: { type: Date, required: true },
+  privacyNoticeVersion: { type: String, required: true, default: "1.0" },
   city: { type: String, required: true, trim: true, maxlength: 80 },
   state: { type: String, required: true, uppercase: true, enum: states },
   passwordHash: { type: String, required: true, select: false },
@@ -114,19 +116,19 @@ function publicRequest(item) {
 
 app.get("/api/health", (_req, res) => res.json({
   status: "ok", database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-  uploads: "private-mongodb", phoneVerification: process.env.OTP_PROVIDER ? "configured" : "manual-admin-review"
+  uploads: "private-mongodb", phoneVerification: "manual-admin-review"
 }));
 
 app.post("/api/auth/register", authLimiter, async (req, res) => {
   try {
-    const { fullName, cpf, phone, city, state, password } = req.body || {};
+    const { fullName, cpf, phone, city, state, password, termsAccepted } = req.body || {};
     const normalizedCpf = cleanCpf(cpf), normalizedPhone = normalizePhone(phone), uf = String(state || "").toUpperCase();
-    if (!fullName || String(fullName).trim().length < 5 || !validCpf(normalizedCpf) || !validPhone(normalizedPhone) || !city || !states.includes(uf) || String(password || "").length < 10) {
+    if (!fullName || String(fullName).trim().length < 5 || !validCpf(normalizedCpf) || !validPhone(normalizedPhone) || !city || !states.includes(uf) || String(password || "").length < 10 || termsAccepted !== "true") {
       return res.status(400).json({ error: "Confira os dados: nome completo, CPF válido, telefone com DDD, cidade, UF e senha com pelo menos 10 caracteres." });
     }
     if (await User.findOne({ cpf: normalizedCpf })) return res.status(409).json({ error: "Já existe uma conta cadastrada com este CPF. Tente entrar." });
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await User.create({ fullName: String(fullName).trim(), cpf: normalizedCpf, phone: normalizedPhone, city: String(city).trim(), state: uf, passwordHash });
+    const user = await User.create({ fullName: String(fullName).trim(), cpf: normalizedCpf, phone: normalizedPhone, city: String(city).trim(), state: uf, passwordHash, termsAcceptedAt: new Date(), privacyNoticeVersion: "1.0" });
     setSession(res, user);
     res.status(201).json({ user: publicUser(user), message: "Cadastro realizado. O telefone ainda precisa ser confirmado." });
   } catch (error) {
@@ -192,7 +194,7 @@ app.get("/api/my/debts", requireAuth, async (req, res) => {
 app.get("/api/admin/requests", requireAuth, requireAdmin, async (_req, res) => {
   const items = await DebtRequest.find().populate("user", "fullName phone phoneVerified city state").sort({ createdAt: -1 }).limit(200).lean();
   res.json(items.map(item => ({
-    id: String(item._id), fullName: item.user?.fullName, phone: item.user?.phone, phoneVerified: item.user?.phoneVerified,
+    id: String(item._id), userId: String(item.user?._id || ""), fullName: item.user?.fullName, phone: item.user?.phone, phoneVerified: item.user?.phoneVerified,
     city: item.user?.city, state: item.user?.state, category: item.category, creditor: item.creditor, amount: item.amount,
     description: item.description, status: item.status, adminNote: item.adminNote, createdAt: item.createdAt, documentId: String(item.document)
   })));
@@ -208,11 +210,15 @@ app.patch("/api/admin/requests/:id", requireAuth, requireAdmin, async (req, res)
   const allowed = ["approved", "rejected", "needs_more_info"];
   const { status, note } = req.body || {};
   if (!allowed.includes(status)) return res.status(400).json({ error: "Status inválido." });
-  const item = await DebtRequest.findByIdAndUpdate(req.params.id, {
-    status, adminNote: String(note || "").slice(0, 1000), reviewedBy: req.session.sub, reviewedAt: new Date()
-  }, { new: true });
-  if (!item) return res.status(404).json({ error: "Solicitação não encontrada." });
-  res.json({ ok: true, status: item.status });
+  const existing = await DebtRequest.findById(req.params.id).populate("user", "phoneVerified");
+  if (!existing) return res.status(404).json({ error: "Solicitação não encontrada." });
+  if (status === "approved" && !existing.user?.phoneVerified) return res.status(409).json({ error: "Confirme o telefone do beneficiário antes de aprovar e publicar o pedido." });
+  existing.status = status;
+  existing.adminNote = String(note || "").slice(0, 1000);
+  existing.reviewedBy = req.session.sub;
+  existing.reviewedAt = new Date();
+  await existing.save();
+  res.json({ ok: true, status: existing.status });
 });
 app.patch("/api/admin/users/:id/phone-verification", requireAuth, requireAdmin, async (req, res) => {
   const user = await User.findByIdAndUpdate(req.params.id, { phoneVerified: Boolean(req.body?.verified) }, { new: true });
