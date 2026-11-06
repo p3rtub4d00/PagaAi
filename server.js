@@ -222,7 +222,7 @@ app.post("/api/my/debts/:id/complement", requireAuth, uploadLimiter, upload.sing
     if (!item) return res.status(404).json({ error: "Solicitação não encontrada ou não está aguardando complemento." });
     const replacement = await DebtDocument.create({
       request: item._id, owner: req.session.sub, filename: path.basename(req.file.originalname).slice(0, 140),
-      contentType: req.file.mimetype, size: req.file.size, sha256: fileHash, data: req.file.buffer
+      contentType: req.file.mimetype, size: req.file.size, sha256: crypto.createHash("sha256").update(req.file.buffer).digest("hex"), data: req.file.buffer
     });
     const previousId = item.document;
     item.document = replacement._id;
