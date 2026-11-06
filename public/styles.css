@@ -226,3 +226,49 @@ body.landing-page{background:#f8fafc;color:var(--ink)}
 .pa-complement-form{display:grid;gap:8px;margin-top:12px;padding:12px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa}.pa-complement-form label{display:grid;gap:6px;font-size:10px;font-weight:800;color:#9a3412}.pa-complement-form input{font-size:10px;max-width:100%}.pa-complement-form .pa-btn{justify-self:start}
 
 .public-request-description{font-size:11px;line-height:1.6;color:#64748b;margin:14px 0 8px}.public-request-date{font-size:9px;color:#94a3b8}
+
+/* Revisão de navegação e identidade visual — novembro/2026 */
+.topbar[hidden],body.pa-app-mode>.topbar{display:none!important}
+.hero-art.hero-visual{display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(circle at 50% 45%,#eaf2ff 0,#dce9ff 42%,#f6f9ff 78%);isolation:isolate}
+.hero-visual:after{display:none}
+.visual-orbit{position:absolute;border:1px solid rgba(37,99,235,.13);border-radius:50%;pointer-events:none}
+.visual-orbit-one{width:430px;height:430px;right:8%;top:4%;box-shadow:0 0 0 28px rgba(255,255,255,.25),0 0 0 58px rgba(255,255,255,.18)}
+.visual-orbit-two{width:300px;height:300px;right:20%;top:19%;border-style:dashed;border-color:rgba(16,185,129,.22)}
+.visual-main-card{position:relative;z-index:2;width:min(68%,370px);min-height:330px;padding:34px 34px 25px;border:1px solid rgba(255,255,255,.9);border-radius:24px;background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(246,249,255,.91));box-shadow:0 28px 65px rgba(30,64,175,.13);display:flex;flex-direction:column;align-items:flex-start}
+.visual-symbol{width:54px;height:54px;display:grid;place-items:center;border-radius:17px;background:linear-gradient(145deg,#3b82f6,#1e40af);color:#fff;font-size:27px;box-shadow:0 9px 20px rgba(37,99,235,.22);margin-bottom:25px}
+.visual-kicker{font-size:8px;letter-spacing:1.5px;font-weight:800;color:#64748b}
+.visual-main-card>strong{font:800 29px/1.2 Manrope,sans-serif;letter-spacing:-1px;color:#172554;margin-top:12px}
+.visual-rule{height:3px;width:55px;border-radius:5px;background:linear-gradient(90deg,#2563eb,#10b981);margin:19px 0 13px}
+.visual-caption{max-width:235px;color:#64748b;font-size:11px;line-height:1.7}
+.visual-pill-row{display:flex;align-items:center;gap:5px;margin-top:auto;padding-top:22px}
+.visual-pill-row i{display:block;width:7px;height:7px;border-radius:50%;background:#10b981}
+.visual-pill-row i:nth-child(2){background:#60a5fa}.visual-pill-row i:nth-child(3){background:#cbd5e1}
+.visual-pill-row span{margin-left:7px;color:#64748b;font-size:7px;letter-spacing:1px;font-weight:800}
+.visual-float{position:absolute;z-index:3;display:flex;align-items:center;gap:10px;padding:13px 15px;border:1px solid #e8eef8;border-radius:13px;background:rgba(255,255,255,.96);box-shadow:0 12px 30px rgba(30,64,175,.10)}
+.visual-float>span{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:#ecfdf5;color:#059669;font-size:16px}
+.visual-float-bottom>span{background:#eff6ff;color:#2563eb}
+.visual-float b,.visual-float small{display:block}.visual-float b{font-size:9px;color:#1e293b}.visual-float small{font-size:8px;color:#64748b;margin-top:3px}
+.visual-float-top{right:5%;top:17%}.visual-float-bottom{left:4%;bottom:15%}
+#request-grid>.pa-empty{grid-column:1/-1;max-width:none;min-height:155px;display:flex;flex-direction:column;justify-content:center;align-items:center;background:#fff;border:1px solid #e5ebf3;border-radius:16px}
+.pa-donor-info{max-width:760px;margin:0 auto;padding:34px}.pa-donor-info h2{font-size:23px;margin:12px 0}.pa-donor-info p{font-size:13px;line-height:1.8;color:#64748b;max-width:620px}
+@media(max-width:900px){
+ .visual-main-card{width:min(74%,340px);min-height:305px;padding:28px}
+ .visual-main-card>strong{font-size:26px}
+ .visual-float-top{right:2%;top:12%}.visual-float-bottom{left:1%;bottom:10%}
+}
+@media(max-width:620px){
+ .hero-visual{top:auto!important;bottom:0!important;left:0!important;right:0!important;width:100%!important;height:255px!important;opacity:1!important;background:linear-gradient(180deg,rgba(239,246,255,.2),#eaf2ff)!important}
+ .visual-main-card{width:205px;min-height:185px;padding:17px;border-radius:17px;transform:translateY(5px)}
+ .visual-symbol{width:34px;height:34px;border-radius:11px;font-size:17px;margin-bottom:10px}
+ .visual-kicker{font-size:6px}
+ .visual-main-card>strong{font-size:17px;margin-top:6px}
+ .visual-rule{margin:9px 0 7px;width:35px;height:2px}
+ .visual-caption{font-size:7px;line-height:1.4}
+ .visual-pill-row{padding-top:10px}.visual-pill-row i{width:5px;height:5px}.visual-pill-row span{font-size:5px}
+ .visual-orbit-one{width:260px;height:260px;right:3%;top:-5%}.visual-orbit-two{width:185px;height:185px;right:18%;top:11%}
+ .visual-float{padding:8px 9px;gap:6px;border-radius:10px}
+ .visual-float>span{width:24px;height:24px;font-size:12px;border-radius:7px}
+ .visual-float b{font-size:7px}.visual-float small{font-size:6px}
+ .visual-float-top{right:2%;top:7%}.visual-float-bottom{left:2%;bottom:5%}
+ .pa-donor-info{padding:23px}
+}
