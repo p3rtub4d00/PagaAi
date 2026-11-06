@@ -28,11 +28,18 @@
         <div class="hero-actions"><button class="btn btn-primary btn-large" data-role="donor">Quero ajudar <span>♥</span></button><button class="btn btn-outline btn-large" data-role="beneficiary">Preciso de ajuda <span>→</span></button></div>
         <div class="trust-line"><span>✓</span> Respeito à dignidade <span>•</span> Cuidado com os dados <span>•</span> Transparência</div>
       </div>
-      <div class="hero-art">
-        <div class="art-glow"></div>
-        <img class="hero-photo" src="/images/mae-filha.jpg" alt="Mãe abraçando sua filha em um momento de carinho" fetchpriority="high">
-        <div class="floating-note"><span class="note-icon">♥</span><div><b>Solidariedade transforma</b><small>Um gesto pode abrir caminhos.</small></div></div>
-        <div class="hero-art-caption">Apoio que acolhe. Esperança que continua.</div>
+      <div class="hero-art hero-visual" aria-hidden="true">
+        <div class="visual-orbit visual-orbit-one"></div><div class="visual-orbit visual-orbit-two"></div>
+        <div class="visual-main-card">
+          <span class="visual-symbol">♥</span>
+          <span class="visual-kicker">PAGAAI · REDE DE APOIO</span>
+          <strong>Pequenos gestos.<br>Novos caminhos.</strong>
+          <span class="visual-rule"></span>
+          <span class="visual-caption">Solidariedade com cuidado, respeito e transparência.</span>
+          <div class="visual-pill-row"><i></i><i></i><i></i><span>APOIO COM PROPÓSITO</span></div>
+        </div>
+        <div class="visual-float visual-float-top"><span>✓</span><div><b>Dados protegidos</b><small>Privacidade em primeiro lugar</small></div></div>
+        <div class="visual-float visual-float-bottom"><span>♥</span><div><b>Ajuda que aproxima</b><small>Uma comunidade mais solidária</small></div></div>
       </div>
       <div class="hero-stats">
         <div><span class="stat-icon blue">♡</span><strong>Ajuda com propósito</strong><small>Contribua com uma causa real</small></div>
@@ -59,13 +66,10 @@
     </section>
 
     <section class="section-wrap requests-section" id="pedidos">
-      <div class="section-heading row-heading"><div><span class="eyebrow">Cada história merece atenção</span><h2>Exemplos de pedidos de ajuda</h2><p>Veja como as solicitações poderão ser apresentadas na plataforma.</p></div><span class="preview-label">PRÉVIA ILUSTRATIVA</span></div>
+      <div class="section-heading row-heading"><div><span class="eyebrow">Cada história merece atenção</span><h2>Pedidos de ajuda publicados</h2><p>Solicitações que passaram pela análise da equipe PagaAi.</p></div></div>
       <div class="request-grid" id="request-grid">
-        <article class="request-card"><div class="request-top"><span class="verified">Exemplo de categoria</span><span class="location">Porto Velho · RO</span></div><div class="request-body"><div class="request-icon energy">ϟ</div><div class="request-info"><h3>Conta de energia</h3><strong>R$ 684,32</strong><small>Exemplo de solicitação</small></div><button class="btn btn-green btn-help" data-help="Conta de Energia">Ver exemplo</button></div><button class="details-link" data-details="Conta de Energia">Detalhes demonstrativos ↓</button></article>
-        <article class="request-card"><div class="request-top"><span class="verified">Exemplo de categoria</span><span class="location">São Paulo · SP</span></div><div class="request-body"><div class="request-icon rent">⌂</div><div class="request-info"><h3>Moradia</h3><strong>R$ 1.200,00</strong><small>Exemplo de solicitação</small></div><button class="btn btn-green btn-help" data-help="Moradia">Ver exemplo</button></div><button class="details-link" data-details="Moradia">Detalhes demonstrativos ↓</button></article>
-        <article class="request-card"><div class="request-top"><span class="verified">Exemplo de categoria</span><span class="location">Curitiba · PR</span></div><div class="request-body"><div class="request-icon health">✚</div><div class="request-info"><h3>Tratamento de saúde</h3><strong>R$ 3.850,00</strong><small>Exemplo de solicitação</small></div><button class="btn btn-green btn-help" data-help="Saúde">Ver exemplo</button></div><button class="details-link" data-details="Saúde">Detalhes demonstrativos ↓</button></article>
+        <div class="pa-empty"><h3>Carregando solicitações</h3><p>Buscando pedidos aprovados pela equipe PagaAi.</p></div>
       </div>
-      <p class="demo-note">Atenção: os cartões acima são apenas exemplos de interface. Não representam pessoas ou dívidas reais, não foram verificados e não recebem contribuições.</p>
     </section>
 
     <section class="section-wrap impact-section" id="transparencia">
@@ -82,14 +86,6 @@
     <footer><a class="brand" href="#inicio"><span class="brand-mark">♥</span><span>Paga<span>Ai</span></span></a><p>Quem pode, ajuda. Quem precisa, recebe.</p><div class="footer-links"><a href="#como-funciona">Como funciona</a><a href="#transparencia">Transparência</a><a href="#pedidos">Pedidos</a></div><small>© <span id="year"></span> PagaAi. Solidariedade com transparência.</small></footer>
   </main>
 
-  <div class="modal-backdrop" id="modal" aria-hidden="true"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" id="modal-close" aria-label="Fechar">×</button><div class="modal-brand"><span class="brand-mark">♥</span> PagaAi</div><h2 id="modal-title">Vamos começar?</h2><p id="modal-description">Escolha como deseja participar.</p><form id="debt-form" class="hidden">
-      <label>Seu nome<input name="applicantName" required maxlength="100" placeholder="Nome completo"></label>
-      <div class="form-row"><label>Cidade<input name="city" required placeholder="Sua cidade"></label><label>UF<input name="state" required maxlength="2" placeholder="RO"></label></div>
-      <label>Tipo de dívida<select name="category" required><option value="">Selecione</option><option>Energia Elétrica</option><option>Água</option><option>Aluguel</option><option>Tratamento Médico</option><option>Alimentação</option><option>Educação</option><option>Outro</option></select></label>
-      <label>Valor da dívida (R$)<input name="amount" type="number" min="1" step="0.01" required placeholder="0,00"></label>
-      <label>Conte um pouco sobre a situação<textarea name="description" rows="3" maxlength="1200" placeholder="Informações adicionais (opcional)"></textarea></label>
-      <button class="btn btn-primary btn-full" type="submit">Enviar solicitação →</button><small class="form-privacy">Seus dados serão tratados com cuidado. A documentação comprobatória será solicitada em uma etapa segura.</small>
-    </form><div id="modal-content" class="modal-options"><button class="btn btn-primary btn-full" data-role="donor">Quero ajudar</button><button class="btn btn-green btn-full" data-role="beneficiary">Preciso de ajuda</button></div><div id="toast" role="status"></div></section></div>
   <script src="/app.js"></script>
 
 </body>
