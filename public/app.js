@@ -1,6 +1,90 @@
 (() => {
 const main=document.querySelector("main"); if(!main)return;
 const originalMain=main.innerHTML; let currentUser=null; const adminPath=/^\/admin\/?$/i.test(location.pathname);
+let deferredInstallPrompt = null;
+let pwaRegistration = null;
+
+function base64ToUint8Array(base64) {
+ const padding = "=".repeat((4 - base64.length % 4) % 4);
+ const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/"));
+ return Uint8Array.from([...raw].map(ch => ch.charCodeAt(0)));
+}
+async function setupPwa() {
+ if (!("serviceWorker" in navigator)) return;
+ try { pwaRegistration = await navigator.serviceWorker.register("/sw.js", { scope: "/" }); }
+ catch (error) { console.warn("PWA/service worker:", error.message); }
+}
+window.addEventListener("beforeinstallprompt", event => {
+ event.preventDefault();
+ deferredInstallPrompt = event;
+ document.querySelectorAll("[data-install-pwa]").forEach(btn => btn.hidden = false);
+});
+window.addEventListener("appinstalled", () => {
+ deferredInstallPrompt = null;
+ document.querySelectorAll("[data-install-pwa]").forEach(btn => btn.hidden = true);
+});
+async function installPwa() {
+ if (!deferredInstallPrompt) {
+   alert("No celular, abra o menu do navegador e escolha “Adicionar à tela inicial” ou “Instalar app”.");
+   return;
+ }
+ deferredInstallPrompt.prompt();
+ await deferredInstallPrompt.userChoice;
+ deferredInstallPrompt = null;
+ document.querySelectorAll("[data-install-pwa]").forEach(btn => btn.hidden = true);
+}
+async function sharePagaAi() {
+ const shareData = { title: "PagaAi", text: "Conheça o PagaAi: uma rede de apoio para ajudar pessoas a superar dívidas essenciais.", url: location.origin + "/" };
+ try {
+   if (navigator.share) { await navigator.share(shareData); return; }
+   await navigator.clipboard.writeText(shareData.url);
+   alert("Link do PagaAi copiado. Agora você pode enviar para seus amigos.");
+ } catch (error) {
+   if (error?.name !== "AbortError") alert("Não foi possível compartilhar automaticamente. Copie o endereço do PagaAi pelo navegador.");
+ }
+}
+async function setupAdminPushStatus() {
+ const button = document.querySelector("[data-admin-push]");
+ if (!button || !currentUser || currentUser.role !== "admin") return;
+ if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+   button.textContent = "Notificações não suportadas";
+   button.disabled = true;
+   return;
+ }
+ try {
+   const permission = Notification.permission;
+   const registration = pwaRegistration || await navigator.serviceWorker.ready;
+   const subscription = await registration.pushManager.getSubscription();
+   if (permission === "granted" && subscription) {
+     button.textContent = "Notificações ativadas neste celular";
+     button.classList.add("pa-push-enabled");
+     return;
+   }
+   button.textContent = permission === "denied" ? "Notificações bloqueadas" : "Ativar notificações neste celular";
+ } catch (error) { button.textContent = "Ativar notificações neste celular"; }
+}
+async function enableAdminPush() {
+ const button = document.querySelector("[data-admin-push]");
+ if (!button) return;
+ button.disabled = true;
+ button.textContent = "Ativando notificações...";
+ try {
+   const key = await api("/api/push/public-key");
+   if (!("Notification" in window) || !("PushManager" in window)) throw Error("Seu navegador não oferece notificações push.");
+   const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+   if (permission !== "granted") throw Error("A permissão para notificações não foi concedida.");
+   const registration = pwaRegistration || await navigator.serviceWorker.ready;
+   let subscription = await registration.pushManager.getSubscription();
+   if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToUint8Array(key.publicKey) });
+   await api("/api/push/admin-subscription", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: subscription.toJSON() }) });
+   button.textContent = "Notificações ativadas neste celular";
+   button.classList.add("pa-push-enabled");
+   alert("Pronto. Este celular receberá um aviso quando um beneficiário solicitar a confirmação do telefone.");
+ } catch (error) {
+   button.textContent = "Ativar notificações neste celular";
+   alert(error.message);
+ } finally { button.disabled = false; }
+}
 const topbar=document.querySelector(".topbar");
 const nav=document.querySelector(".topbar nav");
 
@@ -60,8 +144,8 @@ function dashboard(){
     : '<p>Para proteger sua conta, precisamos confirmar que você tem acesso ao número informado no cadastro: <b>'+esc(currentUser.phone)+'</b>.</p><button class="pa-btn pa-primary" data-phone-request>Solicitar código pelo WhatsApp</button>';
  frame("Área do beneficiário",'<div class="pa-dashboard-cards"><article class="pa-panel"><span class="eyebrow">SUA CONTA</span><h2>Olá, '+esc((currentUser.fullName||"").split(" ")[0])+'</h2><p>Cadastre uma dívida, anexe o comprovante e acompanhe a análise.</p><button class="pa-btn pa-primary" data-new-request>Cadastrar uma dívida</button></article><article class="pa-panel pa-phone-verification"><span class="eyebrow">SEGURANÇA DA CONTA</span><h2>Confirmar telefone</h2><p>Telefone cadastrado: <b>'+esc(currentUser.phone)+'</b></p>'+verification+'</article></div><section class="pa-panel"><div class="pa-panel-head"><div><h2>Seus pedidos</h2><p>Consulte status e eventuais orientações.</p></div><button class="pa-btn pa-light" data-my-requests>Ver solicitações</button></div></section>');
 }
-async function admin(){
- frame("Central de gestão",'<div class="pa-admin-dashboard"><div class="pa-admin-welcome"><div><span class="eyebrow">PAGAAI · ADMINISTRAÇÃO</span><h2>Visão geral da rede</h2><p>Acompanhe cadastros, Pix recebidos, apoio à plataforma, boletos e quitações.</p></div><button class="pa-btn pa-light" data-admin-refresh>↻ Atualizar dados</button></div><div id="pa-admin-stats" class="pa-admin-stats"><div class="pa-stat-card">Carregando indicadores...</div></div><section class="pa-panel"><div class="pa-panel-head"><div><h2>Confirmação de telefones</h2><p>Solicitações dos beneficiários. Gere o código e envie manualmente pelo WhatsApp cadastrado.</p></div><span id="pa-phone-verification-count" class="pa-status">Carregando</span></div><div id="pa-admin-phone-verifications">Carregando solicitações...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Fila de análise e pagamento</h2><p>Pedidos pendentes, metas atingidas e boletos aguardando pagamento.</p></div><span id="pa-pending-count" class="pa-status">Carregando</span></div><div id="pa-admin-pending">Carregando solicitações...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Campanhas ativas</h2><p>Pedidos aprovados e publicados que ainda recebem contribuições.</p></div><span id="pa-admin-active-count" class="pa-status">Carregando</span></div><div id="pa-admin-active">Carregando campanhas...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Campanhas finalizadas</h2><p>Dívidas quitadas, com histórico e comprovante de quitação.</p></div><span id="pa-admin-finished-count" class="pa-status">Carregando</span></div><div id="pa-admin-finished">Carregando campanhas...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Solicitações recusadas</h2><p>Histórico de pedidos que não foram aprovados.</p></div><span id="pa-admin-history-count" class="pa-status">Carregando</span></div><div id="pa-admin-history">Carregando histórico...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Moderação do mural de agradecimentos</h2><p>Mensagens só aparecem publicamente depois da aprovação da equipe.</p></div><span id="pa-comments-count" class="pa-status">Carregando</span></div><div id="pa-admin-comments">Carregando mensagens...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Configuração do custo operacional</h2><p>Defina o valor cobrado por Pix para cobrir a tarifa da conta Asaas. Confira a tarifa atual no próprio Asaas.</p></div><span class="pa-status">CONFIGURAÇÃO</span></div><form id="pa-payment-settings-form" class="pa-contribute-form"><label>Custo operacional por Pix (R$)<input name="asaasPixProcessingFee" type="number" min="0" max="100" step="0.01" required value="1.99"></label><small>Informe o valor exato da tarifa da sua conta. R$ 0,00 desativa o repasse. O valor será exibido ao doador antes de gerar o Pix e não entra na arrecadação da campanha.</small><button class="pa-btn pa-primary" type="submit">Salvar custo operacional</button><div id="pa-payment-settings-feedback" role="status"></div></form></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Contribuições registradas</h2><p>Registro de cobranças Pix e pagamentos confirmados pelo Asaas.</p></div><span class="pa-status">PIX · ASAAS</span></div><div id="pa-admin-contributions">Carregando contribuições...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Apoio voluntário à PagaAi</h2><p>Valores separados das campanhas e contabilizados somente após confirmação do Asaas.</p></div></div><div class="pa-table-wrap" id="pa-admin-supports">Carregando apoios...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Pessoas cadastradas</h2><p>Dados pessoais visíveis exclusivamente para a administração.</p></div><span id="pa-users-count" class="pa-status">Carregando</span></div><div class="pa-table-wrap" id="pa-admin-users">Carregando cadastros...</div></section><section class="pa-panel pa-reset-panel"><div><span class="pa-reset-kicker">AÇÃO IRREVERSÍVEL</span><h2>Zerar todos os dados do sistema</h2><p>Apaga cadastros de beneficiários, pedidos, documentos, boletos atualizados, comprovantes de quitação, contribuições, apoios voluntários e mensagens do mural. O administrador e as configurações do sistema serão preservados.</p><ul><li>Os dados apagados não poderão ser recuperados pelo painel.</li><li>Esta ação não altera as variáveis de ambiente nem a conexão do banco.</li><li>Use somente quando quiser iniciar uma nova fase de testes ou operação.</li></ul><button class="pa-btn pa-danger" data-reset-system>Apagar todos os cadastros e pedidos</button></div></section></div>');
+async function admin(){\n setupAdminPushStatus();
+ frame("Central de gestão",'<div class="pa-admin-dashboard"><div class="pa-admin-welcome"><div><span class="eyebrow">PAGAAI · ADMINISTRAÇÃO</span><h2>Visão geral da rede</h2><p>Acompanhe cadastros, Pix recebidos, apoio à plataforma, boletos e quitações.</p></div><div class="pa-admin-actions"><button class="pa-btn pa-light" data-admin-push>Ativar notificações neste celular</button><button class="pa-btn pa-light" data-admin-refresh>↻ Atualizar dados</button></div></div><div id="pa-admin-stats" class="pa-admin-stats"><div class="pa-stat-card">Carregando indicadores...</div></div><section class="pa-panel"><div class="pa-panel-head"><div><h2>Confirmação de telefones</h2><p>Solicitações dos beneficiários. Gere o código e envie manualmente pelo WhatsApp cadastrado.</p></div><span id="pa-phone-verification-count" class="pa-status">Carregando</span></div><div id="pa-admin-phone-verifications">Carregando solicitações...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Fila de análise e pagamento</h2><p>Pedidos pendentes, metas atingidas e boletos aguardando pagamento.</p></div><span id="pa-pending-count" class="pa-status">Carregando</span></div><div id="pa-admin-pending">Carregando solicitações...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Campanhas ativas</h2><p>Pedidos aprovados e publicados que ainda recebem contribuições.</p></div><span id="pa-admin-active-count" class="pa-status">Carregando</span></div><div id="pa-admin-active">Carregando campanhas...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Campanhas finalizadas</h2><p>Dívidas quitadas, com histórico e comprovante de quitação.</p></div><span id="pa-admin-finished-count" class="pa-status">Carregando</span></div><div id="pa-admin-finished">Carregando campanhas...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Solicitações recusadas</h2><p>Histórico de pedidos que não foram aprovados.</p></div><span id="pa-admin-history-count" class="pa-status">Carregando</span></div><div id="pa-admin-history">Carregando histórico...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Moderação do mural de agradecimentos</h2><p>Mensagens só aparecem publicamente depois da aprovação da equipe.</p></div><span id="pa-comments-count" class="pa-status">Carregando</span></div><div id="pa-admin-comments">Carregando mensagens...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Configuração do custo operacional</h2><p>Defina o valor cobrado por Pix para cobrir a tarifa da conta Asaas. Confira a tarifa atual no próprio Asaas.</p></div><span class="pa-status">CONFIGURAÇÃO</span></div><form id="pa-payment-settings-form" class="pa-contribute-form"><label>Custo operacional por Pix (R$)<input name="asaasPixProcessingFee" type="number" min="0" max="100" step="0.01" required value="1.99"></label><small>Informe o valor exato da tarifa da sua conta. R$ 0,00 desativa o repasse. O valor será exibido ao doador antes de gerar o Pix e não entra na arrecadação da campanha.</small><button class="pa-btn pa-primary" type="submit">Salvar custo operacional</button><div id="pa-payment-settings-feedback" role="status"></div></form></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Contribuições registradas</h2><p>Registro de cobranças Pix e pagamentos confirmados pelo Asaas.</p></div><span class="pa-status">PIX · ASAAS</span></div><div id="pa-admin-contributions">Carregando contribuições...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Apoio voluntário à PagaAi</h2><p>Valores separados das campanhas e contabilizados somente após confirmação do Asaas.</p></div></div><div class="pa-table-wrap" id="pa-admin-supports">Carregando apoios...</div></section><section class="pa-panel"><div class="pa-panel-head"><div><h2>Pessoas cadastradas</h2><p>Dados pessoais visíveis exclusivamente para a administração.</p></div><span id="pa-users-count" class="pa-status">Carregando</span></div><div class="pa-table-wrap" id="pa-admin-users">Carregando cadastros...</div></section><section class="pa-panel pa-reset-panel"><div><span class="pa-reset-kicker">AÇÃO IRREVERSÍVEL</span><h2>Zerar todos os dados do sistema</h2><p>Apaga cadastros de beneficiários, pedidos, documentos, boletos atualizados, comprovantes de quitação, contribuições, apoios voluntários e mensagens do mural. O administrador e as configurações do sistema serão preservados.</p><ul><li>Os dados apagados não poderão ser recuperados pelo painel.</li><li>Esta ação não altera as variáveis de ambiente nem a conexão do banco.</li><li>Use somente quando quiser iniciar uma nova fase de testes ou operação.</li></ul><button class="pa-btn pa-danger" data-reset-system>Apagar todos os cadastros e pedidos</button></div></section></div>');
  try{
   const [stats,requests,users,contributions,comments,supports,phoneVerifications,paymentSettings]=await Promise.all([api("/api/admin/overview"),api("/api/admin/requests"),api("/api/admin/users"),api("/api/admin/contributions"),api("/api/admin/comments"),api("/api/admin/platform-support"),api("/api/admin/phone-verifications"),api("/api/admin/payment-settings")]);
    const feeInput=document.querySelector("#pa-payment-settings-form [name=asaasPixProcessingFee]");if(feeInput)feeInput.value=Number(paymentSettings.asaasPixProcessingFee||0).toFixed(2);
@@ -99,7 +183,7 @@ function openPixModal(pix,message){
 }
 document.addEventListener("input",e=>{const form=e.target.closest("[data-contribute-form]");if(form)updatePixEstimate(form);});
 document.addEventListener("click",async e=>{const t=e.target.closest("button,a");if(!t)return;
- if(t.hasAttribute("data-close-pix")){closePixModal();return;}
+ if(t.hasAttribute("data-install-pwa")){installPwa();return;} if(t.hasAttribute("data-share-app")){sharePagaAi();return;} if(t.hasAttribute("data-admin-push")){enableAdminPush();return;} if(t.hasAttribute("data-close-pix")){closePixModal();return;}
  if(t.hasAttribute("data-home")){e.preventDefault();home();return;}
  if(t.dataset.screen==="overview"){e.preventDefault();if(currentUser){currentUser.role==="admin"?admin():dashboard();}else auth("login",false);return;}
  if(t.hasAttribute("data-dashboard")){e.preventDefault();if(currentUser){currentUser.role==="admin"?admin():dashboard();}else auth("login",false);return;}
