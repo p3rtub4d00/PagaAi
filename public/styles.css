@@ -1033,3 +1033,8 @@ body.pa-contribution-modal-open{overflow:hidden}
   .pa-install-popup { bottom: max(82px, calc(env(safe-area-inset-bottom) + 72px)); }
 }
 @media (prefers-reduced-motion: reduce) { .pa-whatsapp-float { transition: none; } }
+
+
+/* O atalho de compartilhamento existe somente na página pública inicial. */
+body.pa-app-mode .pa-whatsapp-float { display: none !important; }
+.pa-phone-refresh-note { display:block; margin-top:8px; color:#64748b; font-size:11px; line-height:1.4; }
