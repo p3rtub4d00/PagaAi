@@ -329,29 +329,38 @@ app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req,
       notificationDisabled: true
     }});
     contribution = await Contribution.create({ request: item._id, amount: value, donorName, donorType, anonymous, method: "pix", status: "pending" });
-    const campaignPix = await createAsaasPix(customer.id, value, "Contribuição PagaAi - campanha " + String(item._id), "pagaai-campaign-" + String(contribution._id));
-    contribution.asaasPaymentId = campaignPix.paymentId;
-    contribution.externalReference = "pagaai-campaign-" + String(contribution._id);
-    await contribution.save();
-    let supportPix = null;
+    const totalValue = Math.round((value + supportValue) * 100) / 100;
+    const externalReference = "pagaai-total-" + String(contribution._id);
     if (supportValue >= 1) {
-      try {
-        support = await PlatformSupport.create({ amount: supportValue, donorName, anonymous, method: "pix", status: "pending" });
-        supportPix = await createAsaasPix(customer.id, supportValue, "Apoio voluntário à manutenção da plataforma PagaAi", "pagaai-support-" + String(support._id));
-        support.asaasPaymentId = supportPix.paymentId;
-        support.externalReference = "pagaai-support-" + String(support._id);
-        await support.save();
-      } catch (supportError) {
-        console.error("Asaas platform support charge:", supportError.message);
-        if (support && !support.asaasPaymentId) await PlatformSupport.deleteOne({ _id: support._id }).catch(() => {});
-        support = null;
-        supportPix = null;
-      }
+      support = await PlatformSupport.create({ amount: supportValue, donorName, anonymous, method: "pix", status: "pending" });
+    }
+    const totalPix = await createAsaasPix(
+      customer.id,
+      totalValue,
+      supportValue >= 1
+        ? "PagaAi - contribuição para campanha e apoio voluntário"
+        : "PagaAi - contribuição para campanha",
+      externalReference
+    );
+    contribution.asaasPaymentId = totalPix.paymentId;
+    contribution.externalReference = externalReference;
+    await contribution.save();
+    if (support) {
+      support.asaasPaymentId = totalPix.paymentId;
+      support.externalReference = externalReference;
+      await support.save();
     }
     res.set("Cache-Control", "no-store").status(201).json({
-      ok: true, message: "Cobrança Pix criada. A arrecadação será atualizada somente após a confirmação do pagamento.",
-      campaign: { amount: value, qrCode: campaignPix.encodedImage, payload: campaignPix.payload, expirationDate: campaignPix.expirationDate },
-      platformSupport: supportPix ? { amount: supportValue, qrCode: supportPix.encodedImage, payload: supportPix.payload, expirationDate: supportPix.expirationDate } : null
+      ok: true,
+      message: "Pix único criado. O valor será dividido internamente após a confirmação do pagamento.",
+      pix: {
+        amount: totalValue,
+        campaignAmount: value,
+        supportAmount: supportValue,
+        qrCode: totalPix.encodedImage,
+        payload: totalPix.payload,
+        expirationDate: totalPix.expirationDate
+      }
     });
   } catch (error) {
     if (contribution && !contribution.asaasPaymentId) await Contribution.deleteOne({ _id: contribution._id }).catch(() => {});
