@@ -372,14 +372,16 @@ app.post("/api/admin/requests/:id/mark-paid", requireAuth, requireAdmin, upload.
   }
 });
 app.get("/api/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
-  const [users, requests, byStatus, paid] = await Promise.all([
+  const [users, requests, byStatus, paid, simulated] = await Promise.all([
     User.countDocuments({ role: "beneficiary" }), DebtRequest.countDocuments(),
     DebtRequest.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
-    DebtRequest.aggregate([{ $match: { status: "paid" } }, { $group: { _id: null, amount: { $sum: "$amount" }, people: { $addToSet: "$user" }, count: { $sum: 1 } } }])
+    DebtRequest.aggregate([{ $match: { status: "paid" } }, { $group: { _id: null, amount: { $sum: "$amount" }, people: { $addToSet: "$user" }, count: { $sum: 1 } } }]),
+    Contribution.aggregate([{ $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } }])
   ]);
   const counts = Object.fromEntries(byStatus.map(x => [x._id, x.count]));
   const settled = paid[0] || { amount: 0, people: [], count: 0 };
-  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count });
+  const simulation = simulated[0] || { amount: 0, count: 0 };
+  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, simulatedAmount: simulation.amount, simulatedContributions: simulation.count });
 });
 app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res) => {
   const users = await User.find({ role: "beneficiary" }).select("+cpf fullName phone phoneVerified city state createdAt").sort({ createdAt: -1 }).limit(500).lean();
