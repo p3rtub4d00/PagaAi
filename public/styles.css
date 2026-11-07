@@ -302,3 +302,29 @@ body.landing-page{background:#f8fafc;color:var(--ink)}
 .pa-donor-info{max-width:900px}
 .pa-donor-info .request-grid{grid-template-columns:repeat(2,minmax(0,1fr));max-width:none}
 @media(max-width:720px){.pa-donor-options{grid-template-columns:1fr}.pa-donor-info .request-grid{grid-template-columns:1fr}.pa-progress-label{font-size:9px}}
+
+
+/* Mural de agradecimentos e comentários moderados */
+.pa-comments{margin-top:18px;padding:16px;border:1px solid #dce8f6;border-radius:14px;background:#f8fbff}
+.pa-comments-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.pa-comments-heading h4{margin:0;color:#172554;font:800 14px Manrope,sans-serif}
+.pa-comments-heading>span,.pa-comments small{font-size:9px;color:#64748b}
+.pa-comments-list{display:grid;gap:9px}
+.pa-comment{padding:12px;border:1px solid #e5edf8;border-radius:10px;background:#fff}
+.pa-comment>div{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pa-comment b{font-size:10px;color:#1e40af}
+.pa-comment span{font-size:8px;color:#94a3b8}
+.pa-comment p{margin:8px 0 0;color:#475569;font-size:11px;line-height:1.65;overflow-wrap:anywhere}
+.pa-comments-empty{margin:0;padding:12px;border-radius:9px;background:#fff;color:#64748b;font-size:10px;line-height:1.6}
+.pa-support-comment-form,.pa-testimonial-form{display:grid;gap:10px;margin-top:13px;padding-top:13px;border-top:1px solid #e2eaf5}
+.pa-support-comment-form>label,.pa-testimonial-form>label:first-child{display:grid;gap:6px;color:#334155;font-size:10px;font-weight:800}
+.pa-support-comment-form textarea,.pa-testimonial-form textarea{width:100%;resize:vertical;min-height:70px;border:1px solid #d8e1ee;border-radius:9px;padding:10px;background:#fff;color:#1e293b;font:500 11px "DM Sans",sans-serif}
+.pa-comment-fields{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px}
+.pa-comment-fields>input{min-width:0;border:1px solid #d8e1ee;border-radius:9px;padding:10px;font:500 11px "DM Sans",sans-serif}
+.pa-support-comment-form .pa-btn,.pa-testimonial-form .pa-btn{justify-self:start}
+.pa-testimonial-form{border:1px solid #d1fae5;border-radius:11px;padding:13px;background:#f0fdf4}
+.pa-testimonial-form>b{font:800 11px Manrope;color:#047857}
+.pa-testimonial-form .pa-anon-option{display:flex;align-items:center;gap:7px;font-size:9px;color:#475569}
+.pa-testimonial-form .pa-anon-option input{width:14px;height:14px}
+.pa-comment-message{padding:12px;border-radius:9px;background:#f8fafc;line-height:1.7;overflow-wrap:anywhere}
+@media(max-width:620px){.pa-comment-fields{grid-template-columns:1fr}.pa-comments{padding:12px}.pa-comments-heading{align-items:flex-start;flex-direction:column}.pa-comment>div{align-items:flex-start;flex-direction:column;gap:3px}}

@@ -96,6 +96,14 @@ const contributionSchema = new mongoose.Schema({
   method: { type: String, enum: ["pix_simulation"], default: "pix_simulation" },
   status: { type: String, enum: ["simulated"], default: "simulated" }
 }, { timestamps: true });
+const commentSchema = new mongoose.Schema({
+  request: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiDebtRequest", required: true, index: true },
+  type: { type: String, enum: ["support", "testimonial"], required: true },
+  author: { type: String, trim: true, maxlength: 80, default: "Anônimo" },
+  message: { type: String, trim: true, required: true, maxlength: 600 },
+  anonymous: { type: Boolean, default: false },
+  status: { type: String, enum: ["pending", "approved", "hidden"], default: "pending", index: true }
+}, { timestamps: true });
 const publicProofSchema = new mongoose.Schema({
   request: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiDebtRequest", required: true, index: true },
   filename: { type: String, required: true },
@@ -109,6 +117,7 @@ const DebtRequest = mongoose.models.PagaAiDebtRequest || mongoose.model("PagaAiD
 const DebtDocument = mongoose.models.PagaAiDocument || mongoose.model("PagaAiDocument", documentSchema);
 const Contribution = mongoose.models.PagaAiContribution || mongoose.model("PagaAiContribution", contributionSchema);
 const PublicProof = mongoose.models.PagaAiPublicProof || mongoose.model("PagaAiPublicProof", publicProofSchema);
+const PublicComment = mongoose.models.PagaAiPublicComment || mongoose.model("PagaAiPublicComment", commentSchema);
 
 function cleanCpf(value) { return String(value || "").replace(/\D/g, ""); }
 function validCpf(value) {
@@ -348,6 +357,57 @@ app.get("/api/public/debts/:id/payment-proof", async (req, res) => {
     res.setHeader("Cache-Control", "public, max-age=300");
     res.send(proof.data);
   } catch { res.status(404).json({ error: "Comprovante público indisponível." }); }
+});
+app.get("/api/public/debts/:id/comments", async (req, res) => {
+  try {
+    const item = await DebtRequest.findOne({ _id: req.params.id, status: "paid" }).select("_id");
+    if (!item) return res.status(404).json({ error: "Mural disponível somente após a quitação." });
+    const comments = await PublicComment.find({ request: item._id, status: "approved" }).sort({ createdAt: 1 }).limit(100).lean();
+    res.set("Cache-Control", "no-store").json(comments.map(c => ({ id: String(c._id), type: c.type, status: c.status, author: c.anonymous ? "Anônimo" : c.author, message: c.message, createdAt: c.createdAt })));
+  } catch { res.status(404).json({ error: "Não foi possível carregar o mural." }); }
+});
+app.post("/api/public/debts/:id/comments", contributionLimiter, async (req, res) => {
+  try {
+    const item = await DebtRequest.findOne({ _id: req.params.id, status: "paid" }).select("_id");
+    if (!item) return res.status(409).json({ error: "Os comentários são liberados somente depois da quitação." });
+    const message = String(req.body?.message || "").trim();
+    const anonymous = req.body?.anonymous === true || req.body?.anonymous === "true";
+    const author = anonymous ? "Anônimo" : String(req.body?.author || "").trim();
+    if (message.length < 8 || message.length > 600) return res.status(400).json({ error: "Escreva uma mensagem entre 8 e 600 caracteres." });
+    if (!anonymous && (author.length < 2 || author.length > 80)) return res.status(400).json({ error: "Informe seu nome ou escolha comentar anonimamente." });
+    const comment = await PublicComment.create({ request: item._id, type: "support", author, anonymous, message, status: "pending" });
+    res.status(201).json({ ok: true, id: String(comment._id), message: "Mensagem recebida e enviada para moderação. Ela aparecerá no mural após aprovação." });
+  } catch (error) { console.error("public comment:", error.message); res.status(400).json({ error: "Não foi possível enviar a mensagem." }); }
+});
+app.post("/api/my/debts/:id/testimonial", requireAuth, contributionLimiter, async (req, res) => {
+  try {
+    if (req.session.role !== "beneficiary") return res.status(403).json({ error: "Apenas o beneficiário pode publicar um agradecimento." });
+    const item = await DebtRequest.findOne({ _id: req.params.id, user: req.session.sub, status: "paid" }).select("_id");
+    if (!item) return res.status(409).json({ error: "O agradecimento fica disponível somente após a quitação do seu pedido." });
+    if (await PublicComment.exists({ request: item._id, type: "testimonial", status: { $in: ["pending", "approved"] } })) return res.status(409).json({ error: "Você já enviou um agradecimento para este pedido." });
+    const message = String(req.body?.message || "").trim();
+    const anonymous = req.body?.anonymous === true || req.body?.anonymous === "true";
+    if (message.length < 8 || message.length > 600) return res.status(400).json({ error: "Escreva um agradecimento entre 8 e 600 caracteres." });
+    const user = await User.findById(req.session.sub).select("fullName");
+    const comment = await PublicComment.create({ request: item._id, type: "testimonial", author: user?.fullName || "Beneficiário", anonymous, message, status: "pending" });
+    res.status(201).json({ ok: true, id: String(comment._id), message: "Agradecimento enviado para moderação. Ele aparecerá no mural após aprovação." });
+  } catch (error) { console.error("testimonial:", error.message); res.status(400).json({ error: "Não foi possível enviar o agradecimento." }); }
+});
+app.get("/api/admin/comments", requireAuth, requireAdmin, async (_req, res) => {
+  const comments = await PublicComment.find({ status: { $in: ["pending", "hidden"] } }).populate("request", "category status").sort({ createdAt: 1 }).limit(300).lean();
+  res.json(comments.map(c => ({ id: String(c._id), requestId: String(c.request?._id || ""), category: c.request?.category || "", type: c.type, author: c.anonymous ? "Anônimo" : c.author, message: c.message, createdAt: c.createdAt })));
+});
+app.patch("/api/admin/comments/:id", requireAuth, requireAdmin, async (req, res) => {
+  const status = String(req.body?.status || "");
+  if (!["approved", "hidden"].includes(status)) return res.status(400).json({ error: "Ação de moderação inválida." });
+  const comment = await PublicComment.findByIdAndUpdate(req.params.id, { status }, { new: true });
+  if (!comment) return res.status(404).json({ error: "Mensagem não encontrada." });
+  res.json({ ok: true, status: comment.status });
+});
+app.delete("/api/admin/comments/:id", requireAuth, requireAdmin, async (req, res) => {
+  const deleted = await PublicComment.findByIdAndDelete(req.params.id);
+  if (!deleted) return res.status(404).json({ error: "Mensagem não encontrada." });
+  res.json({ ok: true });
 });
 app.get("/api/admin/contributions", requireAuth, requireAdmin, async (_req, res) => {
   const items = await Contribution.find().populate("request", "category amount").sort({ createdAt: -1 }).limit(500).lean();
