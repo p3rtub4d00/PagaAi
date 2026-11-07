@@ -39,7 +39,7 @@ app.use((req, _res, next) => {
 });
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." } });
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Limite de envios atingido. Tente novamente mais tarde." } });
-const contributionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas simulações em pouco tempo. Aguarde e tente novamente." } });
+const contributionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas tentativas de gerar Pix em pouco tempo. Aguarde e tente novamente." } });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE, files: 1 },
@@ -93,8 +93,21 @@ const contributionSchema = new mongoose.Schema({
   donorName: { type: String, trim: true, maxlength: 100, default: "" },
   donorType: { type: String, enum: ["person", "company"], default: "person" },
   anonymous: { type: Boolean, default: true },
-  method: { type: String, enum: ["pix_simulation"], default: "pix_simulation" },
-  status: { type: String, enum: ["simulated"], default: "simulated" }
+  method: { type: String, enum: ["pix"], default: "pix" },
+  status: { type: String, enum: ["pending", "received", "failed", "refunded", "chargeback"], default: "pending", index: true },
+  asaasPaymentId: { type: String, default: "", index: true },
+  externalReference: { type: String, default: "", index: true },
+  paidAt: { type: Date, default: null }
+}, { timestamps: true });
+const platformSupportSchema = new mongoose.Schema({
+  amount: { type: Number, required: true, min: 1, max: 1000000 },
+  donorName: { type: String, trim: true, maxlength: 100, default: "" },
+  anonymous: { type: Boolean, default: true },
+  method: { type: String, enum: ["pix"], default: "pix" },
+  status: { type: String, enum: ["pending", "received", "failed", "refunded", "chargeback"], default: "pending", index: true },
+  asaasPaymentId: { type: String, default: "", index: true },
+  externalReference: { type: String, default: "", index: true },
+  paidAt: { type: Date, default: null }
 }, { timestamps: true });
 const commentSchema = new mongoose.Schema({
   request: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiDebtRequest", required: true, index: true },
@@ -116,6 +129,7 @@ const User = mongoose.models.PagaAiUser || mongoose.model("PagaAiUser", userSche
 const DebtRequest = mongoose.models.PagaAiDebtRequest || mongoose.model("PagaAiDebtRequest", requestSchema);
 const DebtDocument = mongoose.models.PagaAiDocument || mongoose.model("PagaAiDocument", documentSchema);
 const Contribution = mongoose.models.PagaAiContribution || mongoose.model("PagaAiContribution", contributionSchema);
+const PlatformSupport = mongoose.models.PagaAiPlatformSupport || mongoose.model("PagaAiPlatformSupport", platformSupportSchema);
 const PublicProof = mongoose.models.PagaAiPublicProof || mongoose.model("PagaAiPublicProof", publicProofSchema);
 const PublicComment = mongoose.models.PagaAiPublicComment || mongoose.model("PagaAiPublicComment", commentSchema);
 
@@ -246,43 +260,123 @@ app.post("/api/debts", requireAuth, uploadLimiter, upload.single("document"), as
     res.status(400).json({ error: error.message?.includes("File too large") ? "O arquivo ultrapassa o limite de 5 MB." : error.message || "Não foi possível registrar a solicitação." });
   }
 });
+async function asaasRequest(endpoint, options = {}) {
+  if (!process.env.ASAAS_API_KEY) throw new Error("Integração Asaas não configurada no servidor.");
+  const response = await fetch("https://api.asaas.com/v3" + endpoint, {
+    method: options.method || "GET",
+    headers: { "Content-Type": "application/json", "User-Agent": "PagaAi/1.0", access_token: process.env.ASAAS_API_KEY },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error("Asaas API:", response.status, JSON.stringify(data).slice(0, 1200));
+    throw new Error(data.errors?.[0]?.description || "O Asaas não conseguiu processar a cobrança.");
+  }
+  return data;
+}
+function asaasDate() {
+  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  return [d.getFullYear(), String(d.getMonth()+1).padStart(2,"0"), String(d.getDate()).padStart(2,"0")].join("-");
+}
+async function createAsaasPix(customerId, amount, description, externalReference) {
+  const payment = await asaasRequest("/payments", { method: "POST", body: {
+    customer: customerId, billingType: "PIX", value: amount, dueDate: asaasDate(),
+    description: description.slice(0, 500), externalReference
+  }});
+  const qr = await asaasRequest("/payments/" + encodeURIComponent(payment.id) + "/pixQrCode");
+  return { paymentId: payment.id, encodedImage: qr.encodedImage, payload: qr.payload, expirationDate: qr.expirationDate };
+}
 app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req, res) => {
-  let contribution;
+  let contribution, support;
   try {
     const rawAmount = String(req.body?.amount ?? "").trim().replace(/R\$\s?/gi, "").replace(/\s/g, "");
     const normalizedAmount = rawAmount.includes(",") ? rawAmount.replace(/\./g, "").replace(",", ".") : rawAmount;
     const value = Math.round(Number(normalizedAmount) * 100) / 100;
+    const rawSupport = String(req.body?.supportAmount ?? "0").trim().replace(/R\$\s?/gi, "").replace(/\s/g, "");
+    const normalizedSupport = rawSupport.includes(",") ? rawSupport.replace(/\./g, "").replace(",", ".") : rawSupport;
+    const supportValue = Math.round(Number(normalizedSupport || 0) * 100) / 100;
     const anonymous = req.body?.anonymous === true || req.body?.anonymous === "true";
     const donorType = req.body?.donorType === "company" ? "company" : "person";
     const donorName = anonymous ? "" : String(req.body?.donorName || "").trim().slice(0, 100);
-    if (!Number.isFinite(value) || value < 1 || value > 1000000) return res.status(400).json({ error: "Informe uma contribuição simulada de pelo menos R$ 1,00." });
-    if (!anonymous && !donorName) return res.status(400).json({ error: "Informe seu nome ou o nome da empresa, ou escolha contribuir anonimamente." });
+    if (!Number.isFinite(value) || value < 1 || value > 1000000) return res.status(400).json({ error: "Informe uma contribuição de pelo menos R$ 1,00." });
+    if (!Number.isFinite(supportValue) || supportValue < 0 || supportValue > 1000000 || (supportValue > 0 && supportValue < 1)) return res.status(400).json({ error: "A contribuição voluntária deve ser zero ou de pelo menos R$ 1,00." });
+    if (!anonymous && !donorName) return res.status(400).json({ error: "Informe seu nome ou escolha contribuir anonimamente." });
     const item = await DebtRequest.findOne({ _id: req.params.id, status: "approved" });
     if (!item) return res.status(404).json({ error: "Este pedido não está recebendo contribuições no momento." });
     const remaining = Math.max(0, item.amount - Number(item.raisedAmount || 0));
     if (value > remaining) return res.status(400).json({ error: "A contribuição ultrapassa o valor que falta. Restam " + remaining.toFixed(2) + "." });
-    contribution = await Contribution.create({ request: item._id, amount: value, donorName, donorType, anonymous, method: "pix_simulation", status: "simulated" });
-    const updated = await DebtRequest.findOneAndUpdate(
-      { _id: item._id, status: "approved", $expr: { $lte: [{ $add: [{ $ifNull: ["$raisedAmount", 0] }, value] }, "$amount"] } },
-      { $inc: { raisedAmount: value } }, { new: true }
-    );
-    if (!updated) {
-      await Contribution.deleteOne({ _id: contribution._id });
-      return res.status(409).json({ error: "Outra contribuição completou ou alterou a meta. Atualize a página." });
-    }
-    if (updated.raisedAmount >= updated.amount) {
-      updated.raisedAmount = updated.amount;
-      updated.status = "goal_reached";
-      await updated.save();
+    const customer = await asaasRequest("/customers", { method: "POST", body: {
+      name: donorName || "Apoiador anônimo PagaAi",
+      notificationDisabled: true
+    }});
+    contribution = await Contribution.create({ request: item._id, amount: value, donorName, donorType, anonymous, method: "pix", status: "pending" });
+    const campaignPix = await createAsaasPix(customer.id, value, "Contribuição PagaAi - campanha " + String(item._id), "pagaai-campaign-" + String(contribution._id));
+    contribution.asaasPaymentId = campaignPix.paymentId;
+    contribution.externalReference = "pagaai-campaign-" + String(contribution._id);
+    await contribution.save();
+    let supportPix = null;
+    if (supportValue >= 1) {
+      try {
+        support = await PlatformSupport.create({ amount: supportValue, donorName, anonymous, method: "pix", status: "pending" });
+        supportPix = await createAsaasPix(customer.id, supportValue, "Apoio voluntário à manutenção da plataforma PagaAi", "pagaai-support-" + String(support._id));
+        support.asaasPaymentId = supportPix.paymentId;
+        support.externalReference = "pagaai-support-" + String(support._id);
+        await support.save();
+      } catch (supportError) {
+        console.error("Asaas platform support charge:", supportError.message);
+        if (support && !support.asaasPaymentId) await PlatformSupport.deleteOne({ _id: support._id }).catch(() => {});
+        support = null;
+        supportPix = null;
+      }
     }
     res.set("Cache-Control", "no-store").status(201).json({
-      ok: true, simulated: true, message: updated.status === "goal_reached" ? "Simulação concluída: a meta foi atingida. O beneficiário poderá enviar o boleto atualizado." : "Contribuição simulada registrada. A barra de progresso foi atualizada.",
-      raisedAmount: updated.raisedAmount, amount: updated.amount, remainingAmount: Math.max(0, updated.amount - updated.raisedAmount), progress: Math.min(100, Math.round(updated.raisedAmount / updated.amount * 100)), status: updated.status
+      ok: true, message: "Cobrança Pix criada. A arrecadação será atualizada somente após a confirmação do pagamento.",
+      campaign: { amount: value, qrCode: campaignPix.encodedImage, payload: campaignPix.payload, expirationDate: campaignPix.expirationDate },
+      platformSupport: supportPix ? { amount: supportValue, qrCode: supportPix.encodedImage, payload: supportPix.payload, expirationDate: supportPix.expirationDate } : null
     });
   } catch (error) {
-    if (contribution) await Contribution.deleteOne({ _id: contribution._id }).catch(() => {});
-    console.error("contribution simulation:", error.message);
-    res.status(400).json({ error: "Não foi possível registrar a simulação." });
+    if (contribution && !contribution.asaasPaymentId) await Contribution.deleteOne({ _id: contribution._id }).catch(() => {});
+    if (support && !support.asaasPaymentId) await PlatformSupport.deleteOne({ _id: support._id }).catch(() => {});
+    console.error("Asaas Pix creation:", error.message);
+    res.status(502).json({ error: error.message || "Não foi possível gerar o Pix. Tente novamente." });
+  }
+});
+app.post("/api/webhooks/asaas", async (req, res) => {
+  const expected = process.env.ASAAS_WEBHOOK_TOKEN;
+  const received = req.get("asaas-access-token");
+  if (!expected || !received || received !== expected) return res.status(401).json({ error: "Webhook não autorizado." });
+  try {
+    const event = String(req.body?.event || "");
+    const paymentId = String(req.body?.payment?.id || "");
+    if (!paymentId) return res.status(200).json({ received: true });
+    const receivedEvents = ["PAYMENT_RECEIVED", "PAYMENT_CONFIRMED"];
+    const negativeEvents = ["PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED", "PAYMENT_CHARGEBACK_DISPUTE"];
+    if (!receivedEvents.includes(event) && !negativeEvents.includes(event)) return res.status(200).json({ received: true });
+    const payment = await asaasRequest("/payments/" + encodeURIComponent(paymentId));
+    const isReceived = receivedEvents.includes(event) && ["RECEIVED", "CONFIRMED"].includes(payment.status);
+    const nextStatus = isReceived ? "received" : "refunded";
+    const campaign = await Contribution.findOneAndUpdate(
+      { asaasPaymentId: paymentId, status: "pending" },
+      { $set: { status: nextStatus, paidAt: isReceived ? new Date(payment.paymentDate || payment.clientPaymentDate || Date.now()) : null } },
+      { new: true }
+    );
+    if (campaign && isReceived) {
+      const updated = await DebtRequest.findOneAndUpdate(
+        { _id: campaign.request, status: "approved", $expr: { $lte: [{ $add: [{ $ifNull: ["$raisedAmount", 0] }, campaign.amount] }, "$amount"] } },
+        { $inc: { raisedAmount: campaign.amount } }, { new: true }
+      );
+      if (updated && updated.raisedAmount >= updated.amount) {
+        updated.raisedAmount = updated.amount;
+        updated.status = "goal_reached";
+        await updated.save();
+      }
+      if (!updated) console.error("PagaAi: pagamento recebido fora do saldo restante da campanha", String(campaign._id));
+    }
+    await PlatformSupport.findOneAndUpdate({ asaasPaymentId: paymentId, status: "pending" }, { $set: { status: nextStatus, paidAt: isReceived ? new Date(payment.paymentDate || payment.clientPaymentDate || Date.now()) : null } });
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    console.error("Asaas webhook:", error.message);
+    return res.status(500).json({ error: "Falha ao processar notificação." });
   }
 });
 app.get("/api/public/impact", async (_req, res) => {
@@ -396,9 +490,10 @@ app.delete("/api/admin/comments/:id", requireAuth, requireAdmin, async (req, res
   if (!deleted) return res.status(404).json({ error: "Mensagem não encontrada." });
   res.json({ ok: true });
 });
+app.get("/api/admin/platform-support", requireAuth, requireAdmin, async (_req, res) => { const items = await PlatformSupport.find().sort({ createdAt: -1 }).limit(500).lean(); res.json(items.map(x => ({ id: String(x._id), amount: x.amount, donorName: x.anonymous ? "Anônimo" : x.donorName, status: x.status, asaasPaymentId: x.asaasPaymentId, createdAt: x.createdAt }))); });
 app.get("/api/admin/contributions", requireAuth, requireAdmin, async (_req, res) => {
   const items = await Contribution.find().populate("request", "category amount").sort({ createdAt: -1 }).limit(500).lean();
-  res.json(items.map(x => ({ id: String(x._id), requestId: String(x.request?._id || ""), category: x.request?.category || "", goal: x.request?.amount || 0, amount: x.amount, donorName: x.anonymous ? "Anônimo" : x.donorName, donorType: x.donorType, anonymous: x.anonymous, status: x.status, createdAt: x.createdAt })));
+  res.json(items.map(x => ({ id: String(x._id), requestId: String(x.request?._id || ""), category: x.request?.category || "", goal: x.request?.amount || 0, amount: x.amount, donorName: x.anonymous ? "Anônimo" : x.donorName, donorType: x.donorType, anonymous: x.anonymous, status: x.status, method: x.method, asaasPaymentId: x.asaasPaymentId, createdAt: x.createdAt })));
 });
 app.post("/api/admin/requests/:id/mark-paid", requireAuth, requireAdmin, upload.single("proof"), async (req, res) => {
   let proof;
@@ -421,16 +516,17 @@ app.post("/api/admin/requests/:id/mark-paid", requireAuth, requireAdmin, upload.
   }
 });
 app.get("/api/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
-  const [users, requests, byStatus, paid, simulated] = await Promise.all([
+  const [users, requests, byStatus, paid, receivedTotals, supportTotals] = await Promise.all([
     User.countDocuments({ role: "beneficiary" }), DebtRequest.countDocuments(),
     DebtRequest.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
     DebtRequest.aggregate([{ $match: { status: "paid" } }, { $group: { _id: null, amount: { $sum: "$amount" }, people: { $addToSet: "$user" }, count: { $sum: 1 } } }]),
-    Contribution.aggregate([{ $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } }])
+    Contribution.aggregate([{ $match: { status: "received" } }, { $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } }]),
+    PlatformSupport.aggregate([{ $match: { status: "received" } }, { $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } }])
   ]);
   const counts = Object.fromEntries(byStatus.map(x => [x._id, x.count]));
   const settled = paid[0] || { amount: 0, people: [], count: 0 };
-  const simulation = simulated[0] || { amount: 0, count: 0 };
-  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, simulatedAmount: simulation.amount, simulatedContributions: simulation.count });
+  const received = receivedTotals[0] || { amount: 0, count: 0 };
+  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, receivedAmount: received.amount, receivedContributions: received.count, platformSupportAmount: supportTotals[0]?.amount || 0, platformSupportCount: supportTotals[0]?.count || 0 });
 });
 app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
   if (String(req.body?.confirmation || "") !== "ZERAR PAGAAI") {
@@ -438,6 +534,7 @@ app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
   }
   try {
     const contributions = await Contribution.deleteMany({});
+    const platformSupports = await PlatformSupport.deleteMany({});
     const comments = await PublicComment.deleteMany({});
     const proofs = await PublicProof.deleteMany({});
     const documents = await DebtDocument.deleteMany({});
@@ -453,6 +550,7 @@ app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
         documents: documents.deletedCount || 0,
         publicProofs: proofs.deletedCount || 0,
         contributions: contributions.deletedCount || 0,
+        platformSupports: platformSupports.deletedCount || 0,
         comments: comments.deletedCount || 0
       },
       administratorsKept
