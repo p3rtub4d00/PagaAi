@@ -445,6 +445,36 @@ app.get("/api/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
   const simulation = simulated[0] || { amount: 0, count: 0 };
   res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, simulatedAmount: simulation.amount, simulatedContributions: simulation.count });
 });
+app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
+  if (String(req.body?.confirmation || "") !== "ZERAR PAGAAI") {
+    return res.status(400).json({ error: "Confirmação inválida. A limpeza não foi executada." });
+  }
+  try {
+    const contributions = await Contribution.deleteMany({});
+    const comments = await PublicComment.deleteMany({});
+    const proofs = await PublicProof.deleteMany({});
+    const documents = await DebtDocument.deleteMany({});
+    const requests = await DebtRequest.deleteMany({});
+    const beneficiaries = await User.deleteMany({ role: "beneficiary" });
+    const administratorsKept = await User.countDocuments({ role: "admin" });
+    res.set("Cache-Control", "no-store").json({
+      ok: true,
+      message: "Sistema zerado. O acesso administrativo e as configurações foram preservados.",
+      deleted: {
+        beneficiaries: beneficiaries.deletedCount || 0,
+        requests: requests.deletedCount || 0,
+        documents: documents.deletedCount || 0,
+        publicProofs: proofs.deletedCount || 0,
+        contributions: contributions.deletedCount || 0,
+        comments: comments.deletedCount || 0
+      },
+      administratorsKept
+    });
+  } catch (error) {
+    console.error("admin system reset:", error.message);
+    res.status(500).json({ error: "A limpeza foi interrompida por um erro no banco. Atualize o painel e confira os registros antes de tentar novamente." });
+  }
+});
 app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res) => {
   const users = await User.find({ role: "beneficiary" }).select("+cpf fullName phone phoneVerified city state createdAt").sort({ createdAt: -1 }).limit(500).lean();
   res.json(users.map(user => ({ id: String(user._id), fullName: user.fullName, cpf: user.cpf, phone: user.phone, phoneVerified: user.phoneVerified, city: user.city, state: user.state, createdAt: user.createdAt })));
