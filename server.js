@@ -483,6 +483,7 @@ app.delete("/api/admin/comments/:id", requireAuth, requireAdmin, async (req, res
   if (!deleted) return res.status(404).json({ error: "Mensagem não encontrada." });
   res.json({ ok: true });
 });
+app.get("/api/admin/platform-support", requireAuth, requireAdmin, async (_req, res) => { const items = await PlatformSupport.find().sort({ createdAt: -1 }).limit(500).lean(); res.json(items.map(x => ({ id: String(x._id), amount: x.amount, donorName: x.anonymous ? "Anônimo" : x.donorName, status: x.status, asaasPaymentId: x.asaasPaymentId, createdAt: x.createdAt }))); });
 app.get("/api/admin/contributions", requireAuth, requireAdmin, async (_req, res) => {
   const items = await Contribution.find().populate("request", "category amount").sort({ createdAt: -1 }).limit(500).lean();
   res.json(items.map(x => ({ id: String(x._id), requestId: String(x.request?._id || ""), category: x.request?.category || "", goal: x.request?.amount || 0, amount: x.amount, donorName: x.anonymous ? "Anônimo" : x.donorName, donorType: x.donorType, anonymous: x.anonymous, status: x.status, method: x.method, asaasPaymentId: x.asaasPaymentId, createdAt: x.createdAt })));
@@ -508,16 +509,17 @@ app.post("/api/admin/requests/:id/mark-paid", requireAuth, requireAdmin, upload.
   }
 });
 app.get("/api/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
-  const [users, requests, byStatus, paid, simulated] = await Promise.all([
+  const [users, requests, byStatus, paid, simulated, supportTotals] = await Promise.all([
     User.countDocuments({ role: "beneficiary" }), DebtRequest.countDocuments(),
     DebtRequest.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
     DebtRequest.aggregate([{ $match: { status: "paid" } }, { $group: { _id: null, amount: { $sum: "$amount" }, people: { $addToSet: "$user" }, count: { $sum: 1 } } }]),
-    Contribution.aggregate([{ $match: { status: "received" } }, { $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } }])
+    Contribution.aggregate([{ $match: { status: "received" } }, { $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } }]),
+    PlatformSupport.aggregate([{ $match: { status: "received" } }, { $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } }])
   ]);
   const counts = Object.fromEntries(byStatus.map(x => [x._id, x.count]));
   const settled = paid[0] || { amount: 0, people: [], count: 0 };
   const simulation = simulated[0] || { amount: 0, count: 0 };
-  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, simulatedAmount: simulation.amount, simulatedContributions: simulation.count });
+  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, simulatedAmount: simulation.amount, simulatedContributions: simulation.count, platformSupportAmount: supportTotals[0]?.amount || 0, platformSupportCount: supportTotals[0]?.count || 0 });
 });
 app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
   if (String(req.body?.confirmation || "") !== "ZERAR PAGAAI") {
