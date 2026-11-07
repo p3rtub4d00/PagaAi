@@ -14,24 +14,31 @@ async function setupPwa() {
  try { pwaRegistration = await navigator.serviceWorker.register("/sw.js", { scope: "/" }); }
  catch (error) { console.warn("PWA/service worker:", error.message); }
 }
+function hideInstallPopup() {
+ document.querySelectorAll("[data-install-popup]").forEach(popup => popup.hidden = true);
+}
 window.addEventListener("beforeinstallprompt", event => {
  event.preventDefault();
  deferredInstallPrompt = event;
- document.querySelectorAll("[data-install-pwa]").forEach(btn => btn.hidden = false);
+ if (sessionStorage.getItem("pagaai-install-dismissed") !== "1") {
+   document.querySelectorAll("[data-install-popup]").forEach(popup => popup.hidden = false);
+ }
 });
 window.addEventListener("appinstalled", () => {
  deferredInstallPrompt = null;
- document.querySelectorAll("[data-install-pwa]").forEach(btn => btn.hidden = true);
+ hideInstallPopup();
+ sessionStorage.removeItem("pagaai-install-dismissed");
 });
 async function installPwa() {
  if (!deferredInstallPrompt) {
    alert("No celular, abra o menu do navegador e escolha “Adicionar à tela inicial” ou “Instalar app”.");
    return;
  }
- deferredInstallPrompt.prompt();
- await deferredInstallPrompt.userChoice;
+ const promptEvent = deferredInstallPrompt;
  deferredInstallPrompt = null;
- document.querySelectorAll("[data-install-pwa]").forEach(btn => btn.hidden = true);
+ await promptEvent.prompt();
+ await promptEvent.userChoice;
+ hideInstallPopup();
 }
 async function sharePagaAi() {
  const shareData = { title: "PagaAi", text: "Conheça o PagaAi: uma rede de apoio para ajudar pessoas a superar dívidas essenciais.", url: location.origin + "/" };
@@ -209,7 +216,7 @@ function openPixModal(pix,message){
 }
 document.addEventListener("input",e=>{const form=e.target.closest("[data-contribute-form]");if(form)updatePixEstimate(form);});
 document.addEventListener("click",async e=>{const t=e.target.closest("button,a");if(!t)return;
- if(t.hasAttribute("data-install-pwa")){installPwa();return;} if(t.hasAttribute("data-share-app")){sharePagaAi();return;} if(t.hasAttribute("data-admin-push")){enableAdminPush();return;} if(t.hasAttribute("data-close-pix")){closePixModal();return;}
+ if(t.hasAttribute("data-dismiss-install")){hideInstallPopup();sessionStorage.setItem("pagaai-install-dismissed","1");return;} if(t.hasAttribute("data-install-pwa")){installPwa();return;} if(t.hasAttribute("data-share-app")){sharePagaAi();return;} if(t.hasAttribute("data-admin-push")){enableAdminPush();return;} if(t.hasAttribute("data-close-pix")){closePixModal();return;}
  if(t.hasAttribute("data-home")){e.preventDefault();home();return;}
  if(t.dataset.screen==="overview"){e.preventDefault();if(currentUser){currentUser.role==="admin"?admin():dashboard();}else auth("login",false);return;}
  if(t.hasAttribute("data-dashboard")){e.preventDefault();if(currentUser){currentUser.role==="admin"?admin():dashboard();}else auth("login",false);return;}
