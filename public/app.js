@@ -42,13 +42,8 @@ async function installPwa() {
 }
 async function sharePagaAi() {
  const shareData = { title: "PagaAi", text: "Conheça o PagaAi: uma rede de apoio para ajudar pessoas a superar dívidas essenciais.", url: location.origin + "/" };
- try {
-   if (navigator.share) { await navigator.share(shareData); return; }
-   await navigator.clipboard.writeText(shareData.url);
-   alert("Link do PagaAi copiado. Agora você pode enviar para seus amigos.");
- } catch (error) {
-   if (error?.name !== "AbortError") alert("Não foi possível compartilhar automaticamente. Copie o endereço do PagaAi pelo navegador.");
- }
+ const whatsappUrl = "https://wa.me/?text=" + encodeURIComponent(shareData.text + " " + shareData.url);
+ window.open(whatsappUrl, "_blank", "noopener,noreferrer");
 }
 async function setupAdminPushStatus() {
  const button = document.querySelector("[data-admin-push]");
