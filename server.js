@@ -39,7 +39,7 @@ app.use((req, _res, next) => {
 });
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." } });
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Limite de envios atingido. Tente novamente mais tarde." } });
-const contributionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas simulações em pouco tempo. Aguarde e tente novamente." } });
+const contributionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas tentativas de gerar Pix em pouco tempo. Aguarde e tente novamente." } });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE, files: 1 },
@@ -316,11 +316,18 @@ app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req,
     await contribution.save();
     let supportPix = null;
     if (supportValue >= 1) {
-      support = await PlatformSupport.create({ amount: supportValue, donorName, anonymous, method: "pix", status: "pending" });
-      supportPix = await createAsaasPix(customer.id, supportValue, "Apoio voluntário à manutenção da plataforma PagaAi", "pagaai-support-" + String(support._id));
-      support.asaasPaymentId = supportPix.paymentId;
-      support.externalReference = "pagaai-support-" + String(support._id);
-      await support.save();
+      try {
+        support = await PlatformSupport.create({ amount: supportValue, donorName, anonymous, method: "pix", status: "pending" });
+        supportPix = await createAsaasPix(customer.id, supportValue, "Apoio voluntário à manutenção da plataforma PagaAi", "pagaai-support-" + String(support._id));
+        support.asaasPaymentId = supportPix.paymentId;
+        support.externalReference = "pagaai-support-" + String(support._id);
+        await support.save();
+      } catch (supportError) {
+        console.error("Asaas platform support charge:", supportError.message);
+        if (support && !support.asaasPaymentId) await PlatformSupport.deleteOne({ _id: support._id }).catch(() => {});
+        support = null;
+        supportPix = null;
+      }
     }
     res.set("Cache-Control", "no-store").status(201).json({
       ok: true, message: "Cobrança Pix criada. A arrecadação será atualizada somente após a confirmação do pagamento.",
@@ -509,7 +516,7 @@ app.post("/api/admin/requests/:id/mark-paid", requireAuth, requireAdmin, upload.
   }
 });
 app.get("/api/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
-  const [users, requests, byStatus, paid, simulated, supportTotals] = await Promise.all([
+  const [users, requests, byStatus, paid, receivedTotals, supportTotals] = await Promise.all([
     User.countDocuments({ role: "beneficiary" }), DebtRequest.countDocuments(),
     DebtRequest.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
     DebtRequest.aggregate([{ $match: { status: "paid" } }, { $group: { _id: null, amount: { $sum: "$amount" }, people: { $addToSet: "$user" }, count: { $sum: 1 } } }]),
@@ -518,8 +525,8 @@ app.get("/api/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
   ]);
   const counts = Object.fromEntries(byStatus.map(x => [x._id, x.count]));
   const settled = paid[0] || { amount: 0, people: [], count: 0 };
-  const simulation = simulated[0] || { amount: 0, count: 0 };
-  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, simulatedAmount: simulation.amount, simulatedContributions: simulation.count, platformSupportAmount: supportTotals[0]?.amount || 0, platformSupportCount: supportTotals[0]?.count || 0 });
+  const received = receivedTotals[0] || { amount: 0, count: 0 };
+  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, receivedAmount: received.amount, receivedContributions: received.count, platformSupportAmount: supportTotals[0]?.amount || 0, platformSupportCount: supportTotals[0]?.count || 0 });
 });
 app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
   if (String(req.body?.confirmation || "") !== "ZERAR PAGAAI") {
