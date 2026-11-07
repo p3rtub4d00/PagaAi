@@ -2,6 +2,7 @@
 const main=document.querySelector("main"); if(!main)return;
 const originalMain=main.innerHTML; let currentUser=null; const adminPath=/^\/admin\/?$/i.test(location.pathname);
 let deferredInstallPrompt = null;
+let phoneVerificationPoll = null;
 let pwaRegistration = null;
 
 function base64ToUint8Array(base64) {
@@ -137,14 +138,27 @@ async function myRequests(){
  }catch(e){const el=document.getElementById("pa-my-list");if(el)el.textContent=e.message;}
 }
 function dashboard(){
+ if(phoneVerificationPoll){clearInterval(phoneVerificationPoll);phoneVerificationPoll=null;}
  const verification=currentUser.phoneVerified
   ? '<div class="pa-phone-verified"><span class="pa-status approved">Telefone confirmado</span><p>Seu número foi confirmado. A equipe pode continuar a análise da sua solicitação.</p></div>'
   : currentUser.phoneVerificationStatus==="code_sent"
-   ? '<p>A equipe enviou um código para o WhatsApp cadastrado: <b>'+esc(currentUser.phone)+'</b>. O código expira em 10 minutos.</p><form class="pa-form pa-phone-code-form" id="pa-phone-code-form"><label>Código de 6 números<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required placeholder="000000"></label><button class="pa-btn pa-primary pa-full" type="submit">Confirmar telefone</button><div id="pa-phone-feedback" role="status"></div></form>'
+   ? '<p>A equipe enviou um código para o WhatsApp cadastrado: <b>'+esc(currentUser.phone)+'</b>. O código expira em 10 minutos.</p><form class="pa-form pa-phone-code-form" id="pa-phone-code-form"><label>Código de 6 números<input name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required placeholder="000000"></label><button class="pa-btn pa-primary pa-full" type="submit">Confirmar telefone</button><div id="pa-phone-feedback" role="status"></div></form>'
    : currentUser.phoneVerificationStatus==="requested"
-    ? '<span class="pa-status needs_more_info">Solicitação enviada à equipe</span><p>Estamos preparando seu código. Ele será enviado pelo WhatsApp para <b>'+esc(currentUser.phone)+'</b>. Aguarde o contato.</p><button class="pa-btn pa-light" data-phone-request disabled>Solicitação enviada</button>'
+    ? '<span class="pa-status needs_more_info">Solicitação enviada à equipe</span><p>Estamos aguardando a equipe gerar e enviar seu código pelo WhatsApp para <b>'+esc(currentUser.phone)+'</b>. Assim que o código for gerado, o campo para informá-lo aparecerá automaticamente aqui.</p><button class="pa-btn pa-light" data-phone-refresh type="button">Verificar se o código chegou</button><small class="pa-phone-refresh-note" aria-live="polite">Esta tela verifica o status automaticamente.</small>'
     : '<p>Para proteger sua conta, precisamos confirmar que você tem acesso ao número informado no cadastro: <b>'+esc(currentUser.phone)+'</b>.</p><button class="pa-btn pa-primary" data-phone-request>Solicitar código pelo WhatsApp</button>';
  frame("Área do beneficiário",'<div class="pa-dashboard-cards"><article class="pa-panel"><span class="eyebrow">SUA CONTA</span><h2>Olá, '+esc((currentUser.fullName||"").split(" ")[0])+'</h2><p>Cadastre uma dívida, anexe o comprovante e acompanhe a análise.</p><button class="pa-btn pa-primary" data-new-request>Cadastrar uma dívida</button></article><article class="pa-panel pa-phone-verification"><span class="eyebrow">SEGURANÇA DA CONTA</span><h2>Confirmar telefone</h2><p>Telefone cadastrado: <b>'+esc(currentUser.phone)+'</b></p>'+verification+'</article></div><section class="pa-panel"><div class="pa-panel-head"><div><h2>Seus pedidos</h2><p>Consulte status e eventuais orientações.</p></div><button class="pa-btn pa-light" data-my-requests>Ver solicitações</button></div></section>');
+ if(!currentUser.phoneVerified && currentUser.phoneVerificationStatus==="requested"){
+  phoneVerificationPoll=setInterval(async()=>{
+   if(!currentUser || currentUser.role!=="beneficiary" || !document.querySelector(".pa-phone-verification")){clearInterval(phoneVerificationPoll);phoneVerificationPoll=null;return;}
+   try{
+    const me=await api("/api/auth/me");
+    if(me.user && (me.user.phoneVerificationStatus!==currentUser.phoneVerificationStatus || me.user.phoneVerified!==currentUser.phoneVerified)){
+     currentUser=me.user;
+     dashboard();
+    }
+   }catch(error){console.warn("Atualização da confirmação do telefone:",error.message);}
+  },5000);
+ }
 }
 function setupAdminMobileNavigation(){
  const app=document.querySelector(".pa-app");
@@ -231,6 +245,12 @@ document.addEventListener("click",async e=>{const t=e.target.closest("button,a")
   return;
  }
  if(t.hasAttribute("data-copy-phone-code")){try{await navigator.clipboard.writeText(t.dataset.copyPhoneCode);t.textContent="Código copiado";}catch{alert("Não foi possível copiar automaticamente. Selecione o código e copie.");}return;}
+ if(t.hasAttribute("data-phone-refresh")){
+  t.disabled=true;t.textContent="Consultando...";
+  try{const me=await api("/api/auth/me");currentUser=me.user;dashboard();}
+  catch(err){alert(err.message);t.disabled=false;t.textContent="Verificar se o código chegou";}
+  return;
+ }
  if(t.hasAttribute("data-phone-request")){
   t.disabled=true;t.textContent="Enviando solicitação...";
   try{const r=await api("/api/my/phone-verification/request",{method:"POST"});alert(r.message);const me=await api("/api/auth/me");currentUser=me.user;dashboard();}
