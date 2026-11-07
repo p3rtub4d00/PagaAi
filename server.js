@@ -98,7 +98,7 @@ const contributionSchema = new mongoose.Schema({
 }, { timestamps: true });
 const commentSchema = new mongoose.Schema({
   request: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiDebtRequest", required: true, index: true },
-  type: { type: String, enum: ["support", "testimonial"], required: true },
+  type: { type: String, enum: ["testimonial"], required: true },
   author: { type: String, trim: true, maxlength: 80, default: "Anônimo" },
   message: { type: String, trim: true, required: true, maxlength: 600 },
   anonymous: { type: Boolean, default: false },
@@ -362,22 +362,9 @@ app.get("/api/public/debts/:id/comments", async (req, res) => {
   try {
     const item = await DebtRequest.findOne({ _id: req.params.id, status: "paid" }).select("_id");
     if (!item) return res.status(404).json({ error: "Mural disponível somente após a quitação." });
-    const comments = await PublicComment.find({ request: item._id, status: "approved" }).sort({ createdAt: 1 }).limit(100).lean();
+    const comments = await PublicComment.find({ request: item._id, type: "testimonial", status: "approved" }).sort({ createdAt: 1 }).limit(100).lean();
     res.set("Cache-Control", "no-store").json(comments.map(c => ({ id: String(c._id), type: c.type, status: c.status, author: c.anonymous ? "Anônimo" : c.author, message: c.message, createdAt: c.createdAt })));
   } catch { res.status(404).json({ error: "Não foi possível carregar o mural." }); }
-});
-app.post("/api/public/debts/:id/comments", contributionLimiter, async (req, res) => {
-  try {
-    const item = await DebtRequest.findOne({ _id: req.params.id, status: "paid" }).select("_id");
-    if (!item) return res.status(409).json({ error: "Os comentários são liberados somente depois da quitação." });
-    const message = String(req.body?.message || "").trim();
-    const anonymous = req.body?.anonymous === true || req.body?.anonymous === "true";
-    const author = anonymous ? "Anônimo" : String(req.body?.author || "").trim();
-    if (message.length < 8 || message.length > 600) return res.status(400).json({ error: "Escreva uma mensagem entre 8 e 600 caracteres." });
-    if (!anonymous && (author.length < 2 || author.length > 80)) return res.status(400).json({ error: "Informe seu nome ou escolha comentar anonimamente." });
-    const comment = await PublicComment.create({ request: item._id, type: "support", author, anonymous, message, status: "pending" });
-    res.status(201).json({ ok: true, id: String(comment._id), message: "Mensagem recebida e enviada para moderação. Ela aparecerá no mural após aprovação." });
-  } catch (error) { console.error("public comment:", error.message); res.status(400).json({ error: "Não foi possível enviar a mensagem." }); }
 });
 app.post("/api/my/debts/:id/testimonial", requireAuth, contributionLimiter, async (req, res) => {
   try {
@@ -394,7 +381,7 @@ app.post("/api/my/debts/:id/testimonial", requireAuth, contributionLimiter, asyn
   } catch (error) { console.error("testimonial:", error.message); res.status(400).json({ error: "Não foi possível enviar o agradecimento." }); }
 });
 app.get("/api/admin/comments", requireAuth, requireAdmin, async (_req, res) => {
-  const comments = await PublicComment.find({ status: { $in: ["pending", "hidden"] } }).populate("request", "category status").sort({ createdAt: 1 }).limit(300).lean();
+  const comments = await PublicComment.find({ type: "testimonial", status: { $in: ["pending", "hidden"] } }).populate("request", "category status").sort({ createdAt: 1 }).limit(300).lean();
   res.json(comments.map(c => ({ id: String(c._id), requestId: String(c.request?._id || ""), category: c.request?.category || "", type: c.type, author: c.anonymous ? "Anônimo" : c.author, message: c.message, createdAt: c.createdAt })));
 });
 app.patch("/api/admin/comments/:id", requireAuth, requireAdmin, async (req, res) => {
