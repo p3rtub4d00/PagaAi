@@ -1051,7 +1051,10 @@ body.pa-app-mode .pa-whatsapp-float { display: none !important; }
 .pa-notification-panel[hidden] { display:none !important; }
 .pa-notification-panel-head { position:sticky; top:0; z-index:1; display:flex; justify-content:space-between; align-items:center; gap:8px; padding:13px 14px; border-bottom:1px solid #e8edf5; background:#fff; }
 .pa-notification-panel-head strong { font-size:13px; }
+.pa-notification-panel-actions { display:flex; align-items:center; gap:10px; }
 .pa-notification-panel-head button { border:0; background:none; color:#2563eb; font-size:10px; font-weight:700; cursor:pointer; }
+.pa-notification-panel-head [data-notifications-close] { display:grid; place-items:center; width:26px; height:26px; border-radius:7px; color:#64748b; font-size:20px; line-height:1; }
+.pa-notification-panel-head [data-notifications-close]:hover { background:#f1f5f9; color:#0f172a; }
 .pa-notification-item { display:flex; align-items:flex-start; gap:10px; padding:12px 13px; border-bottom:1px solid #edf1f7; }
 .pa-notification-item.is-unread { background:#f2f7ff; }
 .pa-notification-item>div { min-width:0; flex:1; }
