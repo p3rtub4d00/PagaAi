@@ -73,10 +73,10 @@ async function enableAdminPush() {
  button.disabled = true;
  button.textContent = "Ativando notificações...";
  try {
-   const key = await api("/api/push/public-key");
-   if (!("Notification" in window) || !("PushManager" in window)) throw Error("Seu navegador não oferece notificações push.");
+   if (!("serviceWorker" in navigator) || !("Notification" in window) || !("PushManager" in window)) throw Error("Seu navegador não oferece notificações push.");
    const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
    if (permission !== "granted") throw Error("A permissão para notificações não foi concedida.");
+   const key = await api("/api/push/public-key");
    const registration = pwaRegistration || await navigator.serviceWorker.ready;
    let subscription = await registration.pushManager.getSubscription();
    if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToUint8Array(key.publicKey) });
