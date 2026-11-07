@@ -292,7 +292,7 @@ function classifyVisitSource(rawReferrer, rawUtm) {
   if (source.includes("youtube") || source.includes("youtu.be")) return "YouTube";
   if (source.includes("linkedin")) return "LinkedIn";
   if (utm) return utm.slice(0, 1).toUpperCase() + utm.slice(1);
-  try { return new URL(rawReferrer).hostname.replace(/^www\\./, "").slice(0, 40) || "Outro"; }
+  try { return new URL(rawReferrer).hostname.replace(/^www\./, "").slice(0, 40) || "Outro"; }
   catch { return "Outro"; }
 }
 function phoneVerificationHash(userId, code) {
