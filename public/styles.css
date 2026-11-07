@@ -1004,3 +1004,32 @@ body.pa-contribution-modal-open{overflow:hidden}
   height: 23px;
   display: block;
 }
+
+
+/* Compartilhamento rápido pelo WhatsApp: botão flutuante discreto */
+.pa-whatsapp-float {
+  position: fixed;
+  z-index: 450;
+  right: max(22px, env(safe-area-inset-right));
+  bottom: max(22px, env(safe-area-inset-bottom));
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: #25d366;
+  box-shadow: 0 7px 22px rgba(37, 211, 102, .34), 0 3px 10px rgba(11, 29, 75, .16);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.pa-whatsapp-float svg { display: block; width: 31px; height: 31px; fill: currentColor; }
+.pa-whatsapp-float:hover { transform: translateY(-3px) scale(1.04); box-shadow: 0 10px 26px rgba(37, 211, 102, .42); }
+.pa-whatsapp-float:focus-visible { outline: 3px solid #0b1d4b; outline-offset: 4px; }
+@media (max-width: 767px) {
+  .pa-whatsapp-float { width: 54px; height: 54px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); }
+  .pa-whatsapp-float svg { width: 29px; height: 29px; }
+  .pa-install-popup { bottom: max(82px, calc(env(safe-area-inset-bottom) + 72px)); }
+}
+@media (prefers-reduced-motion: reduce) { .pa-whatsapp-float { transition: none; } }
