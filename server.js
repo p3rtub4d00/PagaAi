@@ -148,6 +148,16 @@ const pushSubscriptionSchema = new mongoose.Schema({
   userAgent: { type: String, maxlength: 500, default: "" },
   lastUsedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
+const adminNotificationSchema = new mongoose.Schema({
+  admin: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiUser", required: true, index: true },
+  type: { type: String, required: true, maxlength: 40 },
+  title: { type: String, required: true, maxlength: 120 },
+  body: { type: String, required: true, maxlength: 500 },
+  url: { type: String, default: "/admin", maxlength: 300 },
+  entityId: { type: String, default: "", maxlength: 100 },
+  readAt: { type: Date, default: null, index: true }
+}, { timestamps: true });
+adminNotificationSchema.index({ admin: 1, createdAt: -1 });
 
 const User = mongoose.models.PagaAiUser || mongoose.model("PagaAiUser", userSchema);
 const DebtRequest = mongoose.models.PagaAiDebtRequest || mongoose.model("PagaAiDebtRequest", requestSchema);
@@ -158,6 +168,7 @@ const PlatformSettings = mongoose.models.PagaAiPlatformSettings || mongoose.mode
 const PublicProof = mongoose.models.PagaAiPublicProof || mongoose.model("PagaAiPublicProof", publicProofSchema);
 const PublicComment = mongoose.models.PagaAiPublicComment || mongoose.model("PagaAiPublicComment", commentSchema);
 const PushSubscription = mongoose.models.PagaAiPushSubscription || mongoose.model("PagaAiPushSubscription", pushSubscriptionSchema);
+const AdminNotification = mongoose.models.PagaAiAdminNotification || mongoose.model("PagaAiAdminNotification", adminNotificationSchema);
 
 function configureWebPush() {
   const publicKey = String(process.env.VAPID_PUBLIC_KEY || "").trim();
@@ -182,7 +193,7 @@ async function sendAdminPush(payload) {
       await webpush.sendNotification(
         { endpoint: sub.endpoint, keys: sub.keys },
         JSON.stringify(payload),
-        { TTL: 60 }
+        { TTL: 86400 }
       );
       await PushSubscription.updateOne({ _id: sub._id }, { $set: { lastUsedAt: new Date() } });
     } catch (error) {
@@ -193,6 +204,16 @@ async function sendAdminPush(payload) {
       }
     }
   }));
+}
+async function notifyAdmins({ type, title, body, url = "/admin", entityId = "", tag = "" }) {
+  try {
+    const admins = await User.find({ role: "admin", active: true }).select("_id").lean();
+    if (!admins.length) return;
+    await AdminNotification.insertMany(admins.map(admin => ({ admin: admin._id, type, title, body, url, entityId })));
+    await sendAdminPush({ title: "PagaAi · " + title, body, url, tag: tag || "pagaai-" + type + "-" + (entityId || Date.now()), data: { type, entityId } });
+  } catch (error) {
+    console.error("Falha ao registrar notificação administrativa:", error.message);
+  }
 }
 function cleanCpf(value) { return String(value || "").replace(/\D/g, ""); }
 function validCpf(value) {
@@ -271,6 +292,7 @@ app.post("/api/auth/register", authLimiter, async (req, res) => {
     if (await User.findOne({ cpf: normalizedCpf })) return res.status(409).json({ error: "Já existe uma conta cadastrada com este CPF. Tente entrar." });
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await User.create({ fullName: String(fullName).trim(), cpf: normalizedCpf, phone: normalizedPhone, city: String(city).trim(), state: uf, passwordHash, termsAcceptedAt: new Date(), privacyNoticeVersion: "1.0" });
+    await notifyAdmins({ type: "new_user", title: "Novo beneficiário cadastrado", body: user.fullName + " criou uma conta no PagaAi.", url: "/admin#pa-admin-users", entityId: String(user._id) });
     setSession(res, user);
     res.status(201).json({ user: publicUser(user), message: "Cadastro realizado. O telefone ainda precisa ser confirmado." });
   } catch (error) {
@@ -327,6 +349,25 @@ app.delete("/api/push/admin-subscription", requireAuth, requireAdmin, async (req
   if (endpoint) await PushSubscription.deleteOne({ endpoint, user: req.session.sub });
   res.json({ ok: true });
 });
+app.get("/api/admin/notifications", requireAuth, requireAdmin, async (req, res) => {
+  const adminId = req.session.sub;
+  const [items, unread] = await Promise.all([
+    AdminNotification.find({ admin: adminId }).sort({ createdAt: -1 }).limit(100).lean(),
+    AdminNotification.countDocuments({ admin: adminId, readAt: null })
+  ]);
+  res.set("Cache-Control", "no-store").json({ unread, items: items.map(item => ({
+    id: String(item._id), type: item.type, title: item.title, body: item.body,
+    url: item.url, entityId: item.entityId, read: Boolean(item.readAt), createdAt: item.createdAt
+  })) });
+});
+app.patch("/api/admin/notifications/:id/read", requireAuth, requireAdmin, async (req, res) => {
+  await AdminNotification.updateOne({ _id: req.params.id, admin: req.session.sub, readAt: null }, { $set: { readAt: new Date() } });
+  res.json({ ok: true });
+});
+app.post("/api/admin/notifications/read-all", requireAuth, requireAdmin, async (req, res) => {
+  await AdminNotification.updateMany({ admin: req.session.sub, readAt: null }, { $set: { readAt: new Date() } });
+  res.json({ ok: true });
+});
 
 app.post("/api/my/phone-verification/request", requireAuth, phoneVerificationLimiter, async (req, res) => {
   if (req.session.role !== "beneficiary") return res.status(403).json({ error: "Apenas beneficiários podem solicitar a confirmação do telefone." });
@@ -346,7 +387,7 @@ app.post("/api/my/phone-verification/request", requireAuth, phoneVerificationLim
   user.phoneVerificationExpiresAt = null;
   user.phoneVerificationAttempts = 0;
   await user.save();
-  sendAdminPush({ title: "PagaAi · nova confirmação de telefone", body: user.fullName + " solicitou a confirmação do telefone.", url: "/admin", tag: "phone-verification-" + String(user._id), data: { type: "phone_verification", userId: String(user._id) } }).catch(error => console.error("phone verification push:", error.message));
+  await notifyAdmins({ type: "phone_verification", title: "Confirmação de telefone solicitada", body: user.fullName + " solicitou a confirmação do telefone.", url: "/admin#pa-admin-phone-verifications", entityId: String(user._id), tag: "phone-verification-" + String(user._id) });
   res.json({ ok: true, status: "requested", message: "Solicitação enviada. A equipe PagaAi vai gerar seu código e enviar pelo WhatsApp cadastrado." });
 });
 app.post("/api/my/phone-verification/confirm", requireAuth, phoneVerificationLimiter, async (req, res) => {
@@ -395,14 +436,17 @@ app.post("/api/debts", requireAuth, uploadLimiter, upload.single("document"), as
   let createdDoc = null, createdRequest = null;
   try {
     if (req.session.role !== "beneficiary") return res.status(403).json({ error: "Somente beneficiários podem cadastrar pedidos." });
+    const user = await User.findById(req.session.sub);
+    if (!user || !user.active) return res.status(401).json({ error: "Conta não encontrada." });
+    if (!user.phoneVerified || user.phoneVerificationStatus !== "verified") {
+      return res.status(403).json({ error: "Confirme seu telefone antes de cadastrar uma dívida. Solicite o código pelo WhatsApp e informe os 6 números recebidos." });
+    }
     const { category, creditor, amount, dueDate, description } = req.body || {};
     const value = Number(String(amount || "").replace(",", "."));
     if (!categories.includes(category) || !Number.isFinite(value) || value < 1 || value > 1000000 || !req.file) {
       return res.status(400).json({ error: "Informe a categoria, um valor válido e anexe o comprovante da dívida." });
     }
     if (!hasValidFileSignature(req.file)) return res.status(400).json({ error: "O conteúdo do arquivo não corresponde a PDF, JPG ou PNG válido." });
-    const user = await User.findById(req.session.sub);
-    if (!user) return res.status(401).json({ error: "Conta não encontrada." });
     const fileHash = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
     const duplicateDocument = await DebtDocument.findOne({ owner: user._id, sha256: fileHash });
     if (duplicateDocument) {
@@ -415,6 +459,7 @@ app.post("/api/debts", requireAuth, uploadLimiter, upload.single("document"), as
       filename: path.basename(req.file.originalname).slice(0, 140), contentType: req.file.mimetype,
       size: req.file.size, sha256: fileHash, data: req.file.buffer
     });
+    await notifyAdmins({ type: "new_debt", title: "Nova dívida para análise", body: user.fullName + " enviou uma solicitação de " + category + ".", url: "/admin#pa-admin-pending", entityId: String(createdRequest._id) });
     res.status(201).json({ id: createdRequest._id, status: createdRequest.status, message: "Pedido enviado. Ele ficará privado enquanto aguarda análise documental." });
   } catch (error) {
     if (createdDoc) await DebtDocument.deleteOne({ _id: createdDoc._id }).catch(() => {});
@@ -547,6 +592,7 @@ app.post("/api/webhooks/asaas", async (req, res) => {
       { new: true }
     );
     if (campaign && isReceived) {
+      await notifyAdmins({ type: "contribution_received", title: "Contribuição recebida", body: "Uma contribuição de R$ " + Number(campaign.amount).toFixed(2).replace(".", ",") + " foi confirmada pelo Asaas.", url: "/admin#pa-admin-contributions", entityId: String(campaign._id) });
       const updated = await DebtRequest.findOneAndUpdate(
         { _id: campaign.request, status: "approved", $expr: { $lte: [{ $add: [{ $ifNull: ["$raisedAmount", 0] }, campaign.amount] }, "$amount"] } },
         { $inc: { raisedAmount: campaign.amount } }, { new: true }
@@ -599,6 +645,8 @@ app.post("/api/my/debts/:id/updated-bill", requireAuth, uploadLimiter, upload.si
     item.adminNote = "Boleto atualizado recebido. Aguardando conferência e pagamento pela equipe PagaAi.";
     await item.save();
     await DebtDocument.deleteOne({ _id: previousId });
+    const owner = await User.findById(req.session.sub).select("fullName");
+    await notifyAdmins({ type: "updated_bill", title: "Boleto atualizado recebido", body: (owner?.fullName || "Um beneficiário") + " enviou o boleto atualizado.", url: "/admin#pa-admin-pending", entityId: String(item._id) });
     res.json({ ok: true, message: "Boleto atualizado enviado. A equipe PagaAi fará a conferência." });
   } catch (error) {
     console.error("updated bill:", error.message);
@@ -624,6 +672,8 @@ app.post("/api/my/debts/:id/complement", requireAuth, uploadLimiter, upload.sing
     item.reviewedAt = null;
     await item.save();
     await DebtDocument.deleteOne({ _id: previousId });
+    const owner = await User.findById(req.session.sub).select("fullName");
+    await notifyAdmins({ type: "debt_complement", title: "Complemento de dívida recebido", body: (owner?.fullName || "Um beneficiário") + " enviou um novo comprovante.", url: "/admin#pa-admin-pending", entityId: String(item._id) });
     res.json({ ok: true, message: "Novo comprovante enviado. A solicitação voltou para análise." });
   } catch (error) {
     console.error("complement:", error.message);
@@ -661,6 +711,7 @@ app.post("/api/my/debts/:id/testimonial", requireAuth, contributionLimiter, asyn
     if (message.length < 8 || message.length > 600) return res.status(400).json({ error: "Escreva um agradecimento entre 8 e 600 caracteres." });
     const user = await User.findById(req.session.sub).select("fullName");
     const comment = await PublicComment.create({ request: item._id, type: "testimonial", author: user?.fullName || "Beneficiário", anonymous, message, status: "pending" });
+    await notifyAdmins({ type: "testimonial", title: "Novo agradecimento para moderar", body: (user?.fullName || "Um beneficiário") + " enviou um agradecimento.", url: "/admin#pa-admin-comments", entityId: String(comment._id) });
     res.status(201).json({ ok: true, id: String(comment._id), message: "Agradecimento enviado para moderação. Ele aparecerá no mural após aprovação." });
   } catch (error) { console.error("testimonial:", error.message); res.status(400).json({ error: "Não foi possível enviar o agradecimento." }); }
 });
@@ -736,6 +787,7 @@ app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
     const contributions = await Contribution.deleteMany({});
     const platformSupports = await PlatformSupport.deleteMany({});
     const comments = await PublicComment.deleteMany({});
+    const notifications = await AdminNotification.deleteMany({});
     const proofs = await PublicProof.deleteMany({});
     const documents = await DebtDocument.deleteMany({});
     const requests = await DebtRequest.deleteMany({});
@@ -751,7 +803,8 @@ app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
         publicProofs: proofs.deletedCount || 0,
         contributions: contributions.deletedCount || 0,
         platformSupports: platformSupports.deletedCount || 0,
-        comments: comments.deletedCount || 0
+        comments: comments.deletedCount || 0,
+        notifications: notifications.deletedCount || 0
       },
       administratorsKept
     });
