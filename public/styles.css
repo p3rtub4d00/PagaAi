@@ -1055,6 +1055,8 @@ body.pa-app-mode .pa-whatsapp-float { display: none !important; }
 .pa-notification-item { display:flex; align-items:flex-start; gap:10px; padding:12px 13px; border-bottom:1px solid #edf1f7; }
 .pa-notification-item.is-unread { background:#f2f7ff; }
 .pa-notification-item>div { min-width:0; flex:1; }
+.pa-notification-item a { color:#172554; text-decoration:none; }
+.pa-notification-item a:hover { color:#2563eb; text-decoration:underline; }
 .pa-notification-item strong { display:block; font-size:12px; line-height:1.35; }
 .pa-notification-item p { margin:4px 0; color:#53627d; font-size:11px; line-height:1.45; }
 .pa-notification-item small { color:#8994a8; font-size:9px; }
