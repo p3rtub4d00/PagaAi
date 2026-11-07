@@ -466,3 +466,12 @@ body.pa-contribution-modal-open{overflow:hidden}
  .visual-float{padding:6px 7px}
  .visual-float small{display:none}
 }
+
+
+/* Demonstrativo transparente do custo de processamento Pix */
+.pa-pix-estimate{display:grid;gap:8px;margin:5px 0;padding:13px;border:1px solid #cbdcf4;border-radius:12px;background:#f5f9ff}
+.pa-pix-estimate>div{display:flex;justify-content:space-between;gap:12px;color:#475569;font-size:11px}
+.pa-pix-estimate b{color:#1e293b;white-space:nowrap}
+.pa-pix-estimate .pa-pix-estimate-total{margin-top:3px;padding-top:9px;border-top:1px solid #d7e3f3;color:#172554;font-weight:800}
+.pa-pix-estimate-total strong{font:800 18px Manrope,sans-serif;color:#1d4ed8}
+.pa-pix-estimate>small{font-size:9px;line-height:1.55;color:#64748b}

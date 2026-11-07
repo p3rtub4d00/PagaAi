@@ -103,6 +103,7 @@ const contributionSchema = new mongoose.Schema({
   status: { type: String, enum: ["pending", "received", "failed", "refunded", "chargeback"], default: "pending", index: true },
   asaasPaymentId: { type: String, default: "", index: true },
   externalReference: { type: String, default: "", index: true },
+  processingFee: { type: Number, default: 0, min: 0, max: 100 },
   paidAt: { type: Date, default: null }
 }, { timestamps: true });
 const platformSupportSchema = new mongoose.Schema({
@@ -114,6 +115,11 @@ const platformSupportSchema = new mongoose.Schema({
   asaasPaymentId: { type: String, default: "", index: true },
   externalReference: { type: String, default: "", index: true },
   paidAt: { type: Date, default: null }
+}, { timestamps: true });
+const platformSettingsSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true, default: "payments" },
+  asaasPixProcessingFee: { type: Number, min: 0, max: 100, default: 1.99 },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiUser", default: null }
 }, { timestamps: true });
 const commentSchema = new mongoose.Schema({
   request: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiDebtRequest", required: true, index: true },
@@ -136,6 +142,7 @@ const DebtRequest = mongoose.models.PagaAiDebtRequest || mongoose.model("PagaAiD
 const DebtDocument = mongoose.models.PagaAiDocument || mongoose.model("PagaAiDocument", documentSchema);
 const Contribution = mongoose.models.PagaAiContribution || mongoose.model("PagaAiContribution", contributionSchema);
 const PlatformSupport = mongoose.models.PagaAiPlatformSupport || mongoose.model("PagaAiPlatformSupport", platformSupportSchema);
+const PlatformSettings = mongoose.models.PagaAiPlatformSettings || mongoose.model("PagaAiPlatformSettings", platformSettingsSchema);
 const PublicProof = mongoose.models.PagaAiPublicProof || mongoose.model("PagaAiPublicProof", publicProofSchema);
 const PublicComment = mongoose.models.PagaAiPublicComment || mongoose.model("PagaAiPublicComment", commentSchema);
 
@@ -351,6 +358,11 @@ async function asaasRequest(endpoint, options = {}) {
   }
   return data;
 }
+async function getPaymentSettings() {
+  const saved = await PlatformSettings.findOne({ key: "payments" }).lean();
+  const fee = Number(saved?.asaasPixProcessingFee);
+  return { asaasPixProcessingFee: Number.isFinite(fee) && fee >= 0 ? Math.round(fee * 100) / 100 : 1.99 };
+}
 function asaasDate() {
   const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
   return [d.getFullYear(), String(d.getMonth()+1).padStart(2,"0"), String(d.getDate()).padStart(2,"0")].join("-");
@@ -386,13 +398,16 @@ app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req,
     if (!item) return res.status(404).json({ error: "Este pedido não está recebendo contribuições no momento." });
     const remaining = Math.max(0, item.amount - Number(item.raisedAmount || 0));
     if (value > remaining) return res.status(400).json({ error: "A contribuição ultrapassa o valor que falta. Restam " + remaining.toFixed(2) + "." });
+    const paymentSettings = await getPaymentSettings();
+    const processingFee = paymentSettings.asaasPixProcessingFee;
+    const totalValue = Math.round((value + supportValue + processingFee) * 100) / 100;
+    if (totalValue > 1000000) return res.status(400).json({ error: "O total do Pix ultrapassa o limite permitido." });
     const customer = await asaasRequest("/customers", { method: "POST", body: {
       name: legalName,
       cpfCnpj,
       notificationDisabled: true
     }});
-    contribution = await Contribution.create({ request: item._id, amount: value, donorName, donorType, anonymous, method: "pix", status: "pending" });
-    const totalValue = Math.round((value + supportValue) * 100) / 100;
+    contribution = await Contribution.create({ request: item._id, amount: value, processingFee, donorName, donorType, anonymous, method: "pix", status: "pending" });
     const externalReference = "pagaai-total-" + String(contribution._id);
     if (supportValue >= 1) {
       support = await PlatformSupport.create({ amount: supportValue, donorName, anonymous, method: "pix", status: "pending" });
@@ -415,11 +430,12 @@ app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req,
     }
     res.set("Cache-Control", "no-store").status(201).json({
       ok: true,
-      message: "Pix único criado. O valor será dividido internamente após a confirmação do pagamento.",
+      message: "Pix único criado. A contribuição, o apoio voluntário e o custo operacional serão identificados separadamente após a confirmação do pagamento.",
       pix: {
         amount: totalValue,
         campaignAmount: value,
         supportAmount: supportValue,
+        processingFee,
         qrCode: totalPix.encodedImage,
         payload: totalPix.payload,
         expirationDate: totalPix.expirationDate
@@ -469,6 +485,10 @@ app.post("/api/webhooks/asaas", async (req, res) => {
     console.error("Asaas webhook:", error.message);
     return res.status(500).json({ error: "Falha ao processar notificação." });
   }
+});
+app.get("/api/public/payment-settings", async (_req, res) => {
+  try { res.set("Cache-Control", "no-store").json(await getPaymentSettings()); }
+  catch (error) { console.error("payment settings:", error.message); res.status(500).json({ error: "Não foi possível consultar o custo operacional." }); }
 });
 app.get("/api/public/impact", async (_req, res) => {
   try {
@@ -581,10 +601,20 @@ app.delete("/api/admin/comments/:id", requireAuth, requireAdmin, async (req, res
   if (!deleted) return res.status(404).json({ error: "Mensagem não encontrada." });
   res.json({ ok: true });
 });
+app.get("/api/admin/payment-settings", requireAuth, requireAdmin, async (_req, res) => {
+  res.set("Cache-Control", "no-store").json(await getPaymentSettings());
+});
+app.patch("/api/admin/payment-settings", requireAuth, requireAdmin, async (req, res) => {
+  const raw = String(req.body?.asaasPixProcessingFee ?? "").trim().replace(",", ".");
+  const fee = Number(raw);
+  if (!Number.isFinite(fee) || fee < 0 || fee > 100 || Math.round(fee * 100) !== fee * 100) return res.status(400).json({ error: "Informe uma tarifa entre R$ 0,00 e R$ 100,00, com até duas casas decimais." });
+  const settings = await PlatformSettings.findOneAndUpdate({ key: "payments" }, { $set: { asaasPixProcessingFee: Math.round(fee * 100) / 100, updatedBy: req.session.sub } }, { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true });
+  res.set("Cache-Control", "no-store").json({ ok: true, asaasPixProcessingFee: settings.asaasPixProcessingFee, message: "Custo operacional atualizado. Novos Pix usarão este valor." });
+});
 app.get("/api/admin/platform-support", requireAuth, requireAdmin, async (_req, res) => { const items = await PlatformSupport.find().sort({ createdAt: -1 }).limit(500).lean(); res.json(items.map(x => ({ id: String(x._id), amount: x.amount, donorName: x.anonymous ? "Anônimo" : x.donorName, status: x.status, asaasPaymentId: x.asaasPaymentId, createdAt: x.createdAt }))); });
 app.get("/api/admin/contributions", requireAuth, requireAdmin, async (_req, res) => {
   const items = await Contribution.find().populate("request", "category amount").sort({ createdAt: -1 }).limit(500).lean();
-  res.json(items.map(x => ({ id: String(x._id), requestId: String(x.request?._id || ""), category: x.request?.category || "", goal: x.request?.amount || 0, amount: x.amount, donorName: x.anonymous ? "Anônimo" : x.donorName, donorType: x.donorType, anonymous: x.anonymous, status: x.status, method: x.method, asaasPaymentId: x.asaasPaymentId, createdAt: x.createdAt })));
+  res.json(items.map(x => ({ id: String(x._id), requestId: String(x.request?._id || ""), category: x.request?.category || "", goal: x.request?.amount || 0, amount: x.amount, processingFee: x.processingFee || 0, donorName: x.anonymous ? "Anônimo" : x.donorName, donorType: x.donorType, anonymous: x.anonymous, status: x.status, method: x.method, asaasPaymentId: x.asaasPaymentId, createdAt: x.createdAt })));
 });
 app.post("/api/admin/requests/:id/mark-paid", requireAuth, requireAdmin, upload.single("proof"), async (req, res) => {
   let proof;
@@ -611,13 +641,13 @@ app.get("/api/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
     User.countDocuments({ role: "beneficiary" }), DebtRequest.countDocuments(),
     DebtRequest.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
     DebtRequest.aggregate([{ $match: { status: "paid" } }, { $group: { _id: null, amount: { $sum: "$amount" }, people: { $addToSet: "$user" }, count: { $sum: 1 } } }]),
-    Contribution.aggregate([{ $match: { status: "received" } }, { $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } }]),
+    Contribution.aggregate([{ $match: { status: "received" } }, { $group: { _id: null, amount: { $sum: "$amount" }, processingFees: { $sum: "$processingFee" }, count: { $sum: 1 } } }]),
     PlatformSupport.aggregate([{ $match: { status: "received" } }, { $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } }])
   ]);
   const counts = Object.fromEntries(byStatus.map(x => [x._id, x.count]));
   const settled = paid[0] || { amount: 0, people: [], count: 0 };
   const received = receivedTotals[0] || { amount: 0, count: 0 };
-  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, receivedAmount: received.amount, receivedContributions: received.count, platformSupportAmount: supportTotals[0]?.amount || 0, platformSupportCount: supportTotals[0]?.count || 0 });
+  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count, receivedAmount: received.amount, receivedContributions: received.count, processingFeesReceived: received.processingFees || 0, platformSupportAmount: supportTotals[0]?.amount || 0, platformSupportCount: supportTotals[0]?.count || 0 });
 });
 app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
   if (String(req.body?.confirmation || "") !== "ZERAR PAGAAI") {
