@@ -430,3 +430,39 @@ body.pa-contribution-modal-open{overflow:hidden}
 .pa-contribution-modal .pa-anon-option{display:flex;align-items:center;gap:8px;font-size:11px}
 .pa-open-contribution{margin-top:15px;min-height:45px;font-weight:800}
 @media(max-width:620px){.pa-contribution-modal-backdrop{align-items:flex-end;padding:0}.pa-contribution-modal{width:100%;max-height:94dvh;padding:24px 17px calc(18px + env(safe-area-inset-bottom));border-radius:20px 20px 0 0}.pa-contribution-modal h2{font-size:20px}.pa-contribution-modal-close{right:12px;top:11px}.pa-contribution-modal .pa-donor-options{grid-template-columns:1fr}}
+
+
+/* Refinamento institucional: ícones consistentes e cabeçalho mobile sem sobreposição */
+.brand-mark{font-size:0!important;font-weight:800;letter-spacing:-1px}
+.brand-mark::before{content:"P";font:800 23px/1 Manrope,sans-serif;color:#fff}
+.visual-symbol{display:grid;place-items:center}
+.visual-symbol svg{width:28px;height:28px;display:block}
+.visual-float>span{font-size:10px;font-weight:800;letter-spacing:.2px}
+.stat-icon{font-size:12px;font-weight:800;letter-spacing:.4px}
+.role-icon,.step-icon{font:800 17px Manrope,sans-serif;letter-spacing:-.4px}
+.trust-mark{color:#16a36a;font-weight:900}
+@media(max-width:620px){
+ .hero{min-height:0;height:auto;padding-top:30px;padding-bottom:345px;display:block;overflow:hidden}
+ .hero-copy{position:relative;z-index:4;max-width:none}
+ .hero h1{font-size:clamp(34px,9vw,39px);line-height:1.13;margin:17px 0 13px}
+ .hero-copy>p{max-width:100%;font-size:14px;line-height:1.55}
+ .hero-actions{gap:9px;margin-top:20px}
+ .hero-art.hero-visual{top:auto!important;left:0!important;right:0!important;bottom:125px!important;width:100%!important;height:205px!important;opacity:1!important;z-index:1}
+ .visual-main-card{width:225px;min-height:174px;padding:15px 17px;transform:none}
+ .visual-symbol{width:34px;height:34px;margin-bottom:9px}
+ .visual-symbol svg{width:20px;height:20px}
+ .visual-main-card>strong{font-size:17px;line-height:1.2;margin-top:5px}
+ .visual-rule{margin:8px 0 6px}
+ .visual-caption{font-size:8px;line-height:1.35}
+ .visual-pill-row{padding-top:8px}
+ .visual-float-top{right:3%;top:4%}
+ .visual-float-bottom{left:3%;bottom:4%}
+ .hero-stats{height:116px;z-index:3}
+}
+@media(max-width:380px){
+ .hero{padding-left:16px;padding-right:16px;padding-bottom:340px}
+ .hero h1{font-size:33px}
+ .hero-actions .btn{font-size:12px;padding:13px 14px}
+ .visual-float{padding:6px 7px}
+ .visual-float small{display:none}
+}
