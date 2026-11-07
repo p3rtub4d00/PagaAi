@@ -386,7 +386,24 @@ app.post("/api/my/phone-verification/request", requireAuth, phoneVerificationLim
   if (user.phoneVerified) return res.status(409).json({ error: "Seu telefone já está confirmado." });
   const now = new Date();
   if (user.phoneVerificationStatus === "requested" && user.phoneVerificationRequestedAt && now - user.phoneVerificationRequestedAt < 10 * 60 * 1000) {
-    return res.json({ ok: true, status: "requested", message: "Sua solicitação já está na fila da equipe. Aguarde o contato pelo WhatsApp." });
+    // Solicitações antigas podem ter sido registradas antes da central de notificações.
+    // Em uma repetição, recupera o aviso caso ele ainda não exista, sem duplicar notificações.
+    const notificationExists = await AdminNotification.exists({
+      type: "phone_verification",
+      entityId: String(user._id),
+      createdAt: { $gte: user.phoneVerificationRequestedAt }
+    });
+    if (!notificationExists) {
+      await notifyAdmins({
+        type: "phone_verification",
+        title: "Confirmação de telefone solicitada",
+        body: user.fullName + " solicitou a confirmação do telefone " + user.phone + ".",
+        url: "/admin#pa-admin-phone-verifications",
+        entityId: String(user._id),
+        tag: "phone-verification-" + String(user._id)
+      });
+    }
+    return res.json({ ok: true, status: "requested", message: "Sua solicitação já está na fila da equipe. A equipe foi notificada e enviará o código pelo WhatsApp cadastrado." });
   }
   if (user.phoneVerificationStatus === "code_sent" && user.phoneVerificationExpiresAt && user.phoneVerificationExpiresAt > now) {
     return res.json({ ok: true, status: "code_sent", message: "A equipe já enviou um código. Confira o WhatsApp cadastrado e informe o código abaixo." });
