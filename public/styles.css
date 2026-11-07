@@ -551,3 +551,41 @@ body.pa-contribution-modal-open{overflow:hidden}
   .pa-admin-actions { grid-template-columns:1fr; }
   .pa-panel, .pa-auth-card { padding:14px 12px; }
 }
+
+
+/* Master mobile app navigation */
+.pa-admin-mobile-nav{display:none}
+@media(max-width:720px){
+ body.pa-master-mode{background:#f3f6fc}
+ body.pa-master-mode .pa-app{min-height:100dvh;padding-bottom:calc(78px + env(safe-area-inset-bottom))}
+ body.pa-master-mode .pa-head{position:sticky;top:0;z-index:100;height:58px;min-height:58px;padding:0 14px;box-shadow:0 3px 14px rgba(15,35,75,.06)}
+ body.pa-master-mode .pa-head .brand{font-size:20px} body.pa-master-mode .pa-head .brand-mark{width:32px;height:32px;border-radius:10px}
+ body.pa-master-mode .pa-head-right{gap:6px;font-size:0} body.pa-master-mode .pa-head-right>span{display:none}
+ body.pa-master-mode .pa-head-right .pa-btn{min-height:36px;padding:8px 10px;font-size:10px}
+ body.pa-master-mode .pa-wrap{width:100%;max-width:none;margin:0;padding:18px 11px 26px}
+ body.pa-master-mode .pa-page-title{margin:0 3px 13px} body.pa-master-mode .pa-page-title h1{font-size:21px;margin:5px 0}
+ body.pa-master-mode .pa-admin-dashboard{gap:12px}
+ body.pa-master-mode .pa-admin-welcome{padding:16px 14px;border-radius:14px;gap:11px}
+ body.pa-master-mode .pa-admin-welcome h2{font-size:19px;margin:5px 0} body.pa-master-mode .pa-admin-welcome p{font-size:11px;line-height:1.45}
+ body.pa-master-mode .pa-admin-welcome .pa-admin-actions{display:grid;grid-template-columns:1fr 1fr;width:100%;gap:7px}
+ body.pa-master-mode .pa-admin-welcome .pa-admin-actions .pa-btn{width:100%;min-width:0;min-height:40px;padding:8px 6px;font-size:9px;line-height:1.25;white-space:normal}
+ body.pa-master-mode .pa-admin-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ body.pa-master-mode .pa-stat-card{padding:11px 10px;border-radius:11px;min-width:0}
+ body.pa-master-mode .pa-stat-card span{font-size:9px;line-height:1.35} body.pa-master-mode .pa-stat-card strong{font-size:19px;margin:7px 0 3px;overflow-wrap:anywhere} body.pa-master-mode .pa-stat-card small{font-size:8px;line-height:1.35}
+ body.pa-master-mode .pa-panel{padding:13px 11px;border-radius:12px;min-width:0}
+ body.pa-master-mode .pa-panel-head{display:flex;flex-direction:column;align-items:flex-start;gap:7px;margin-bottom:10px}
+ body.pa-master-mode .pa-panel-head h2{font-size:15px;margin:0 0 4px} body.pa-master-mode .pa-panel-head p{font-size:10px;line-height:1.45;margin:0}
+ body.pa-master-mode .pa-admin-item{padding:11px;border-radius:10px} body.pa-master-mode .pa-admin-item h3{font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+ body.pa-master-mode .pa-admin-item small{font-size:9px;line-height:1.45;overflow-wrap:anywhere} body.pa-master-mode .pa-admin-item>p{font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+ body.pa-master-mode .pa-admin-top{display:block} body.pa-master-mode .pa-admin-top>strong{display:block;margin-top:7px;white-space:normal}
+ body.pa-master-mode .pa-admin-meta{gap:5px} body.pa-master-mode .pa-admin-meta span{font-size:8px;padding:5px 6px;overflow-wrap:anywhere}
+ body.pa-master-mode .pa-admin-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+ body.pa-master-mode .pa-admin-actions .pa-btn{width:100%;min-width:0;min-height:39px;padding:8px 6px;font-size:9px;line-height:1.25;white-space:normal}
+ body.pa-master-mode .pa-table-wrap{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch} body.pa-master-mode .pa-users-table{min-width:650px}
+ body.pa-master-mode .pa-admin-mobile-nav{position:fixed;z-index:200;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;padding:8px 6px calc(8px + env(safe-area-inset-bottom));background:rgba(255,255,255,.97);border-top:1px solid #dfe7f3;box-shadow:0 -5px 22px rgba(15,35,75,.09);backdrop-filter:blur(14px)}
+ body.pa-master-mode .pa-admin-mobile-nav a{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:5px 2px;border-radius:9px;color:#64748b;text-decoration:none}
+ body.pa-master-mode .pa-admin-mobile-nav a span{font-size:17px;line-height:1} body.pa-master-mode .pa-admin-mobile-nav a small{font-size:9px;font-weight:800;white-space:nowrap}
+ body.pa-master-mode .pa-admin-mobile-nav a.active{background:#eaf1ff;color:#1d4ed8}
+ body.pa-master-mode .pa-reset-panel ul{padding-left:17px;font-size:9px} body.pa-master-mode .pa-reset-panel .pa-btn{width:100%;white-space:normal;line-height:1.3}
+}
+@media(max-width:370px){body.pa-master-mode .pa-admin-welcome .pa-admin-actions{grid-template-columns:1fr}body.pa-master-mode .pa-admin-actions{grid-template-columns:1fr}body.pa-master-mode .pa-admin-mobile-nav a small{font-size:8px}}
