@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const webpush = require("web-push");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -137,6 +138,17 @@ const publicProofSchema = new mongoose.Schema({
   data: { type: Buffer, required: true, select: false }
 }, { timestamps: true });
 
+const pushSubscriptionSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiUser", required: true, index: true },
+  endpoint: { type: String, required: true, unique: true },
+  keys: {
+    p256dh: { type: String, required: true },
+    auth: { type: String, required: true }
+  },
+  userAgent: { type: String, maxlength: 500, default: "" },
+  lastUsedAt: { type: Date, default: Date.now }
+}, { timestamps: true });
+
 const User = mongoose.models.PagaAiUser || mongoose.model("PagaAiUser", userSchema);
 const DebtRequest = mongoose.models.PagaAiDebtRequest || mongoose.model("PagaAiDebtRequest", requestSchema);
 const DebtDocument = mongoose.models.PagaAiDocument || mongoose.model("PagaAiDocument", documentSchema);
@@ -145,7 +157,43 @@ const PlatformSupport = mongoose.models.PagaAiPlatformSupport || mongoose.model(
 const PlatformSettings = mongoose.models.PagaAiPlatformSettings || mongoose.model("PagaAiPlatformSettings", platformSettingsSchema);
 const PublicProof = mongoose.models.PagaAiPublicProof || mongoose.model("PagaAiPublicProof", publicProofSchema);
 const PublicComment = mongoose.models.PagaAiPublicComment || mongoose.model("PagaAiPublicComment", commentSchema);
+const PushSubscription = mongoose.models.PagaAiPushSubscription || mongoose.model("PagaAiPushSubscription", pushSubscriptionSchema);
 
+function configureWebPush() {
+  const publicKey = String(process.env.VAPID_PUBLIC_KEY || "").trim();
+  const privateKey = String(process.env.VAPID_PRIVATE_KEY || "").trim();
+  const subject = String(process.env.VAPID_SUBJECT || "mailto:admin@pagaai.com.br").trim();
+  if (!publicKey || !privateKey) {
+    console.warn("Notificações push desativadas: configure VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY no Render.");
+    return false;
+  }
+  webpush.setVapidDetails(subject, publicKey, privateKey);
+  return true;
+}
+function pushConfigured() {
+  return Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+}
+async function sendAdminPush(payload) {
+  if (!pushConfigured()) return;
+  const subscriptions = await PushSubscription.find().populate("user", "role active").lean();
+  const targets = subscriptions.filter(s => s.user?.role === "admin" && s.user?.active !== false);
+  await Promise.allSettled(targets.map(async sub => {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: sub.keys },
+        JSON.stringify(payload),
+        { TTL: 60 }
+      );
+      await PushSubscription.updateOne({ _id: sub._id }, { $set: { lastUsedAt: new Date() } });
+    } catch (error) {
+      if (error.statusCode === 404 || error.statusCode === 410) {
+        await PushSubscription.deleteOne({ _id: sub._id });
+      } else {
+        console.error("Falha ao enviar push administrativo:", error.message);
+      }
+    }
+  }));
+}
 function cleanCpf(value) { return String(value || "").replace(/\D/g, ""); }
 function validCpf(value) {
   const cpf = cleanCpf(value);
@@ -250,6 +298,36 @@ app.post("/api/admin/login", authLimiter, async (req, res) => {
   } catch (error) { console.error("admin login:", error.message); res.status(500).json({ error: "Não foi possível acessar a administração." }); }
 });
 
+app.get("/api/push/public-key", requireAuth, requireAdmin, (_req, res) => {
+  if (!pushConfigured()) return res.status(503).json({ error: "Notificações push ainda não configuradas no servidor." });
+  res.set("Cache-Control", "no-store").json({ publicKey: process.env.VAPID_PUBLIC_KEY });
+});
+app.post("/api/push/admin-subscription", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const subscription = req.body?.subscription || {};
+    const endpoint = String(subscription.endpoint || "").trim();
+    const p256dh = String(subscription.keys?.p256dh || "").trim();
+    const auth = String(subscription.keys?.auth || "").trim();
+    if (!endpoint || !p256dh || !auth || endpoint.length > 2000 || p256dh.length > 500 || auth.length > 500) {
+      return res.status(400).json({ error: "Assinatura de notificações inválida." });
+    }
+    await PushSubscription.findOneAndUpdate(
+      { endpoint },
+      { $set: { user: req.session.sub, endpoint, keys: { p256dh, auth }, userAgent: String(req.headers["user-agent"] || "").slice(0, 500), lastUsedAt: new Date() } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ ok: true, message: "Notificações ativadas neste dispositivo." });
+  } catch (error) {
+    console.error("push subscription:", error.message);
+    res.status(400).json({ error: "Não foi possível ativar as notificações neste dispositivo." });
+  }
+});
+app.delete("/api/push/admin-subscription", requireAuth, requireAdmin, async (req, res) => {
+  const endpoint = String(req.body?.endpoint || "").trim();
+  if (endpoint) await PushSubscription.deleteOne({ endpoint, user: req.session.sub });
+  res.json({ ok: true });
+});
+
 app.post("/api/my/phone-verification/request", requireAuth, phoneVerificationLimiter, async (req, res) => {
   if (req.session.role !== "beneficiary") return res.status(403).json({ error: "Apenas beneficiários podem solicitar a confirmação do telefone." });
   const user = await User.findById(req.session.sub);
@@ -268,6 +346,7 @@ app.post("/api/my/phone-verification/request", requireAuth, phoneVerificationLim
   user.phoneVerificationExpiresAt = null;
   user.phoneVerificationAttempts = 0;
   await user.save();
+  sendAdminPush({ title: "PagaAi · nova confirmação de telefone", body: user.fullName + " solicitou a confirmação do telefone.", url: "/admin", tag: "phone-verification-" + String(user._id), data: { type: "phone_verification", userId: String(user._id) } }).catch(error => console.error("phone verification push:", error.message));
   res.json({ ok: true, status: "requested", message: "Solicitação enviada. A equipe PagaAi vai gerar seu código e enviar pelo WhatsApp cadastrado." });
 });
 app.post("/api/my/phone-verification/confirm", requireAuth, phoneVerificationLimiter, async (req, res) => {
@@ -758,6 +837,7 @@ async function start() {
   if (!process.env.MONGODB_URI) { console.error("MONGODB_URI não configurada."); process.exit(1); }
   try {
     await mongoose.connect(process.env.MONGODB_URI);
+    configureWebPush();
     console.log("MongoDB conectado.");
     if (process.env.ADMIN_CPF && process.env.ADMIN_PASSWORD && process.env.ADMIN_NAME) {
       const cpf = cleanCpf(process.env.ADMIN_CPF);
