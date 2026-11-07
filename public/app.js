@@ -84,4 +84,6 @@ async function loadPublicRequests(){
 }
 async function boot(){if(adminPath){auth("login",true);return;}try{const r=await api("/api/auth/me");currentUser=r.user;updateLandingActions();if(currentUser.role==="admin")admin();else dashboard();}catch{updateLandingActions();loadPublicRequests();}}
 boot();
+// Atualização periódica dos indicadores públicos e da fila administrativa.
+setInterval(()=>{if(!document.body.classList.contains("pa-app-mode"))loadPublicRequests();else if(adminPath&&currentUser?.role==="admin"&&!document.querySelector(".pa-admin-note-field textarea:focus"))admin();},20000);
 })();
