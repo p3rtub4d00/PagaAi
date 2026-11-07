@@ -430,6 +430,7 @@ app.post("/api/my/phone-verification/confirm", requireAuth, phoneVerificationLim
   user.phoneVerificationExpiresAt = null;
   user.phoneVerificationAttempts = 0;
   await user.save();
+  await notifyAdmins({ type: "phone_verified", title: "Telefone confirmado", body: user.fullName + " concluiu a confirmação do celular.", url: "/admin#pa-admin-users", entityId: String(user._id) });
   res.json({ ok: true, phoneVerified: true, message: "Telefone confirmado com sucesso. Agora a equipe pode analisar sua solicitação." });
 });
 
@@ -614,7 +615,13 @@ app.post("/api/webhooks/asaas", async (req, res) => {
       }
       if (!updated) console.error("PagaAi: pagamento recebido fora do saldo restante da campanha", String(campaign._id));
     }
-    await PlatformSupport.findOneAndUpdate({ asaasPaymentId: paymentId, status: "pending" }, { $set: { status: nextStatus, paidAt: isReceived ? new Date(payment.paymentDate || payment.clientPaymentDate || Date.now()) : null } });
+    const platformSupport = await PlatformSupport.findOneAndUpdate({ asaasPaymentId: paymentId, status: "pending" }, { $set: { status: nextStatus, paidAt: isReceived ? new Date(payment.paymentDate || payment.clientPaymentDate || Date.now()) : null } }, { new: true });
+    if (platformSupport && isReceived) {
+      await notifyAdmins({ type: "platform_support_received", title: "Apoio à plataforma recebido", body: "Um apoio voluntário de R$ " + Number(platformSupport.amount).toFixed(2).replace(".", ",") + " foi confirmado pelo Asaas.", url: "/admin#pa-admin-supports", entityId: String(platformSupport._id) });
+    }
+    if (campaign && !isReceived) {
+      await notifyAdmins({ type: "payment_reversed", title: "Pagamento estornado ou contestado", body: "Uma contribuição teve o status atualizado para " + event + ".", url: "/admin#pa-admin-contributions", entityId: String(campaign._id) });
+    }
     return res.status(200).json({ received: true });
   } catch (error) {
     console.error("Asaas webhook:", error.message);
