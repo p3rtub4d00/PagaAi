@@ -151,7 +151,7 @@ const pushSubscriptionSchema = new mongoose.Schema({
 const analyticsVisitSchema = new mongoose.Schema({
   visitorHash: { type: String, required: true, index: true },
   source: { type: String, required: true, maxlength: 40, index: true },
-  visitedAt: { type: Date, default: Date.now, index: true }
+  visitedAt: { type: Date, default: Date.now }
 }, { versionKey: false });
 analyticsVisitSchema.index({ visitedAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 180 });
 const AnalyticsVisit = mongoose.models.PagaAiAnalyticsVisit || mongoose.model("PagaAiAnalyticsVisit", analyticsVisitSchema);
