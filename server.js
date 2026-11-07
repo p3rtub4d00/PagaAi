@@ -241,7 +241,7 @@ app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req,
   let contribution;
   try {
     const value = Math.round(Number(String(req.body?.amount || "").replace(",", ".")) * 100) / 100;
-    const anonymous = req.body?.anonymous !== false && req.body?.anonymous !== "false";
+    const anonymous = req.body?.anonymous === true || req.body?.anonymous === "true";
     const donorType = req.body?.donorType === "company" ? "company" : "person";
     const donorName = anonymous ? "" : String(req.body?.donorName || "").trim().slice(0, 100);
     if (!Number.isFinite(value) || value < 1 || value > 1000000) return res.status(400).json({ error: "Informe uma contribuição simulada de pelo menos R$ 1,00." });
