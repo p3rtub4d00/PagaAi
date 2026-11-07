@@ -276,3 +276,29 @@ body.landing-page{background:#f8fafc;color:var(--ink)}
 /* Painel administrativo de gestão e indicadores */
 .pa-admin-dashboard{display:grid;gap:20px}.pa-admin-welcome{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:25px 28px;border-radius:18px;background:linear-gradient(120deg,#172554,#1d4ed8);color:#fff}.pa-admin-welcome h2{font:800 24px Manrope;margin:8px 0}.pa-admin-welcome p{margin:0;color:#dbeafe;font-size:12px}.pa-admin-welcome .eyebrow{color:#bfdbfe}.pa-admin-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.pa-stat-card{background:#fff;border:1px solid #e3eaf4;border-radius:15px;padding:19px;box-shadow:0 8px 22px rgba(15,45,100,.035)}.pa-stat-card span,.pa-stat-card small{display:block;color:#64748b;font-size:10px}.pa-stat-card strong{display:block;color:#172554;font:800 26px Manrope;margin:10px 0 5px}.pa-stat-card small{font-size:9px;line-height:1.5}.pa-table-wrap{width:100%;overflow:auto}.pa-users-table{width:100%;border-collapse:collapse;min-width:760px}.pa-users-table th,.pa-users-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e8edf5;font-size:10px;color:#475569;white-space:nowrap}.pa-users-table th{font-weight:800;color:#1e293b;background:#f8fafc}.pa-public-impact{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 0 22px}.pa-public-impact article{padding:18px;background:#fff;border:1px solid #e5ebf3;border-radius:15px;text-align:center}.pa-public-impact strong,.pa-public-impact span{display:block}.pa-public-impact strong{font:800 24px Manrope;color:#1e40af}.pa-public-impact span{font-size:10px;color:#64748b;margin-top:6px}
 @media(max-width:720px){.pa-admin-welcome{align-items:flex-start;flex-direction:column;padding:21px}.pa-admin-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.pa-stat-card{padding:14px}.pa-stat-card strong{font-size:22px}.pa-public-impact{grid-template-columns:1fr}.pa-public-impact article{display:flex;align-items:center;justify-content:space-between;text-align:left}.pa-public-impact strong{font-size:19px}}
+
+/* Arrecadação coletiva, simulação Pix e comprovante de quitação */
+.pa-progress-block{display:grid;gap:8px;margin:15px 0;padding:13px;border:1px solid #e5edf8;border-radius:12px;background:#f8fbff}
+.pa-progress-label{display:flex;justify-content:space-between;align-items:center;gap:10px;color:#475569;font-size:10px}
+.pa-progress-label b{color:#1e40af;font-size:11px}
+.pa-progress-track{height:11px;border-radius:20px;background:#e2e8f0;overflow:hidden}
+.pa-progress-track i{display:block;height:100%;border-radius:20px;background:linear-gradient(90deg,#2563eb,#10b981);transition:width .35s ease}
+.pa-contribute-form,.pa-settlement-form{display:grid;gap:10px;margin-top:14px;padding:15px;border:1px solid #dbeafe;border-radius:12px;background:#f8fbff}
+.pa-contribute-form>b,.pa-settlement-form>b{font:800 12px Manrope;color:#1e293b}
+.pa-contribute-form label,.pa-settlement-form label{display:grid;gap:6px;font-size:10px;font-weight:800;color:#475569}
+.pa-contribute-form input,.pa-contribute-form select,.pa-settlement-form input{width:100%;min-width:0;border:1px solid #d8e1ee;border-radius:9px;padding:10px;background:#fff;font:500 12px "DM Sans",sans-serif}
+.pa-contribute-form small,.pa-settlement-form p{font-size:9px;line-height:1.55;color:#64748b;margin:0}
+.pa-donor-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pa-anon-option{display:flex!important;align-items:center;gap:7px!important}
+.pa-anon-option input{width:15px;height:15px}
+.pa-simulation-alert{margin:15px 0;padding:12px;border:1px solid #fcd34d;border-radius:10px;background:#fffbeb;color:#92400e;font-size:10px;font-weight:700;line-height:1.6}
+.pa-settlement-form{background:#fffaf5;border-color:#fed7aa}
+.pa-settlement-form p{color:#9a3412}
+.pa-proof-link{margin-top:12px;text-decoration:none}
+.pa-my-request{align-items:flex-start}
+.pa-my-request>div{flex:1;min-width:0}
+.pa-public-request{width:100%;max-width:none}
+.pa-public-request .pa-progress-block{margin:12px 0}
+.pa-donor-info{max-width:900px}
+.pa-donor-info .request-grid{grid-template-columns:repeat(2,minmax(0,1fr));max-width:none}
+@media(max-width:720px){.pa-donor-options{grid-template-columns:1fr}.pa-donor-info .request-grid{grid-template-columns:1fr}.pa-progress-label{font-size:9px}}
