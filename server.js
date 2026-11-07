@@ -184,11 +184,11 @@ function configureWebPush() {
 function pushConfigured() {
   return Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 }
-async function sendAdminPush(payload) {
-  if (!pushConfigured()) return;
+async function sendAdminPush(payload, adminId = null) {
+  if (!pushConfigured()) return { sent: 0, failed: 0, disabled: true };
   const subscriptions = await PushSubscription.find().populate("user", "role active").lean();
-  const targets = subscriptions.filter(s => s.user?.role === "admin" && s.user?.active !== false);
-  await Promise.allSettled(targets.map(async sub => {
+  const targets = subscriptions.filter(s => s.user?.role === "admin" && s.user?.active !== false && (!adminId || String(s.user._id) === String(adminId)));
+  const results = await Promise.allSettled(targets.map(async sub => {
     try {
       await webpush.sendNotification(
         { endpoint: sub.endpoint, keys: sub.keys },
@@ -200,10 +200,12 @@ async function sendAdminPush(payload) {
       if (error.statusCode === 404 || error.statusCode === 410) {
         await PushSubscription.deleteOne({ _id: sub._id });
       } else {
-        console.error("Falha ao enviar push administrativo:", error.message);
+        console.error("Falha ao enviar push administrativo:", error.statusCode || "", error.message);
       }
+      throw error;
     }
   }));
+  return { sent: results.filter(result => result.status === "fulfilled").length, failed: results.filter(result => result.status === "rejected").length, disabled: false };
 }
 async function notifyAdmins({ type, title, body, url = "/admin", entityId = "", tag = "" }) {
   try {
@@ -348,6 +350,14 @@ app.delete("/api/push/admin-subscription", requireAuth, requireAdmin, async (req
   const endpoint = String(req.body?.endpoint || "").trim();
   if (endpoint) await PushSubscription.deleteOne({ endpoint, user: req.session.sub });
   res.json({ ok: true });
+});
+app.post("/api/admin/notifications/test-push", requireAuth, requireAdmin, async (req, res) => {
+  if (!pushConfigured()) return res.status(503).json({ error: "Push não configurado. Confira VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY no Render." });
+  const subscriptionCount = await PushSubscription.countDocuments({ user: req.session.sub });
+  if (!subscriptionCount) return res.status(409).json({ error: "Este dispositivo ainda não está inscrito. Clique primeiro em Ativar notificações neste celular." });
+  const result = await sendAdminPush({ title: "PagaAi · teste de notificação", body: "Se você recebeu este aviso, o push está funcionando neste dispositivo.", url: "/admin", tag: "pagaai-push-test-" + Date.now() }, req.session.sub);
+  if (!result.sent) return res.status(502).json({ error: "O servidor tentou enviar o push, mas o provedor recusou a entrega. Consulte os logs do Render." });
+  res.json({ ok: true, sent: result.sent, failed: result.failed, message: "Notificação de teste enviada para " + result.sent + " assinatura(s)." });
 });
 app.get("/api/admin/notifications", requireAuth, requireAdmin, async (req, res) => {
   const adminId = req.session.sub;
