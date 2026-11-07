@@ -359,3 +359,22 @@ body.pa-modal-open{overflow:hidden}
 .pa-pix-expiry{display:block;margin-top:10px;color:#64748b;font-size:9px}
 .pa-pix-modal-foot{margin:13px 0 0;color:#64748b;font-size:9px;line-height:1.55}
 @media(max-width:520px){.pa-pix-modal-backdrop{align-items:flex-end;padding:0}.pa-pix-modal{width:100%;max-height:94dvh;padding:22px 17px calc(18px + env(safe-area-inset-bottom));border-radius:20px 20px 0 0}.pa-pix-modal h2{font-size:21px}.pa-pix-qr-wrap{width:min(62vw,210px)}}
+
+/* Organização das campanhas por etapa — desktop e mobile */
+.pa-campaign-group{margin-top:22px}
+.pa-campaign-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 14px;padding:0 0 12px;border-bottom:1px solid #e5edf7}
+.pa-campaign-heading h3{margin:5px 0 4px;color:#172554;font:800 19px Manrope,sans-serif}
+.pa-campaign-heading p{margin:0;color:#64748b;font-size:11px;line-height:1.5}
+.pa-campaign-count{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 10px;border-radius:20px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:900}
+.pa-compact-empty{padding:17px;border:1px dashed #dbe5f2;border-radius:11px;background:#f8fafc}
+.pa-my-campaign-group{margin-top:24px}
+.pa-my-campaign-group:first-child{margin-top:8px}
+.pa-my-campaign-group .pa-campaign-heading h3{font-size:16px}
+.pa-my-campaign-group .pa-request-list{gap:11px}
+@media(max-width:620px){
+ .pa-campaign-heading{align-items:flex-start}
+ .pa-campaign-heading h3{font-size:16px}
+ .pa-campaign-heading p{font-size:10px;max-width:270px}
+ .pa-campaign-count{min-width:30px;height:30px}
+ .pa-my-campaign-group .pa-request-row{padding:12px}
+}

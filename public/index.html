@@ -68,9 +68,18 @@
     <section class="section-wrap requests-section" id="pedidos">
       <div class="section-heading row-heading"><div><span class="eyebrow">Cada história merece atenção</span><h2>Pedidos de ajuda publicados</h2><p>Solicitações que passaram pela análise da equipe PagaAi.</p></div></div>
       <div class="pa-public-impact" aria-live="polite"><article><strong id="pa-public-people">—</strong><span>Pessoas ajudadas</span></article><article><strong id="pa-public-value">—</strong><span>Valor com quitação confirmada</span></article><article><strong id="pa-public-paid">—</strong><span>Dívidas quitadas</span></article></div>
-      <div class="request-grid" id="request-grid">
-        <div class="pa-empty"><h3>Carregando solicitações</h3><p>Buscando pedidos aprovados pela equipe PagaAi.</p></div>
-      </div>
+      <section class="pa-campaign-group">
+        <div class="pa-campaign-heading"><div><span class="eyebrow">PRECISAM DA SUA AJUDA</span><h3>Campanhas ativas</h3><p>Pedidos aprovados que ainda estão recebendo contribuições.</p></div><span class="pa-campaign-count" id="pa-active-count">—</span></div>
+        <div class="request-grid" id="request-grid"><div class="pa-empty"><h3>Carregando campanhas ativas</h3><p>Buscando pedidos aprovados pela equipe PagaAi.</p></div></div>
+      </section>
+      <section class="pa-campaign-group" id="pa-processing-section" hidden>
+        <div class="pa-campaign-heading"><div><span class="eyebrow">ETAPA DE CONCLUSÃO</span><h3>Metas alcançadas</h3><p>Campanhas que encerraram a arrecadação e estão em conferência para pagamento.</p></div><span class="pa-campaign-count" id="pa-processing-count">0</span></div>
+        <div class="request-grid" id="pa-processing-grid"></div>
+      </section>
+      <section class="pa-campaign-group" id="pa-finished-section" hidden>
+        <div class="pa-campaign-heading"><div><span class="eyebrow">RESULTADOS DA SOLIDARIEDADE</span><h3>Campanhas finalizadas</h3><p>Dívidas quitadas pela equipe PagaAi, com comprovante disponível quando publicado.</p></div><span class="pa-campaign-count" id="pa-finished-count">0</span></div>
+        <div class="request-grid" id="pa-finished-grid"></div>
+      </section>
     </section>
 
     <section class="section-wrap impact-section" id="transparencia">
