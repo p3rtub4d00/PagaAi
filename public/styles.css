@@ -489,3 +489,65 @@ body.pa-contribution-modal-open{overflow:hidden}
   .pa-admin-welcome .pa-admin-actions{width:100%}
   .pa-admin-welcome .pa-admin-actions .pa-btn{width:100%;justify-content:center}
 }
+
+
+/* Mobile-first refinement: Master admin and beneficiary dashboard */
+@media (max-width: 720px) {
+  .pa-wrap { width:100%; max-width:100%; padding:22px 12px calc(38px + env(safe-area-inset-bottom)); }
+  .pa-head { position:sticky; top:0; z-index:50; min-height:60px; height:auto; padding:9px 12px; gap:8px; background:rgba(255,255,255,.96); backdrop-filter:blur(12px); }
+  .pa-head .brand { font-size:19px; }
+  .pa-head-right { display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .pa-head-right .pa-btn { min-height:38px; padding:9px 11px; font-size:11px; }
+  .pa-page-title { margin:4px 0 18px; }
+  .pa-page-title h1 { font-size:clamp(22px,6vw,28px); line-height:1.15; }
+  .pa-panel, .pa-auth-card { padding:16px 14px; border-radius:14px; }
+  .pa-panel h2 { font-size:17px; line-height:1.25; }
+  .pa-panel-head { gap:9px; }
+  .pa-panel-head > div { min-width:0; width:100%; }
+  .pa-panel-head p { line-height:1.5; overflow-wrap:anywhere; }
+  .pa-dashboard-cards { grid-template-columns:minmax(0,1fr); gap:12px; }
+  .pa-dashboard-cards .pa-panel { min-height:0; }
+  .pa-request-list, .pa-admin-list { gap:10px; }
+  .pa-request-row { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; padding:13px; }
+  .pa-request-row > * { min-width:0; overflow-wrap:anywhere; }
+  .pa-request-row > strong { white-space:normal; font-size:15px; }
+  .pa-admin-item { padding:14px; border-radius:12px; }
+  .pa-admin-top { display:grid; grid-template-columns:minmax(0,1fr); gap:7px; }
+  .pa-admin-top > strong { white-space:normal; }
+  .pa-admin-meta { gap:6px; }
+  .pa-admin-meta span { font-size:10px; overflow-wrap:anywhere; }
+  .pa-admin-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+  .pa-admin-actions .pa-btn { width:100%; min-height:42px; justify-content:center; white-space:normal; line-height:1.25; padding:9px 8px; }
+  .pa-admin-welcome { padding:17px 15px; border-radius:15px; gap:13px; }
+  .pa-admin-welcome h2 { font-size:21px; line-height:1.2; }
+  .pa-admin-welcome p { font-size:12px; line-height:1.55; }
+  .pa-admin-welcome .pa-admin-actions { display:grid; grid-template-columns:1fr; gap:8px; }
+  .pa-admin-welcome .pa-admin-actions .pa-btn { width:100%; min-height:43px; }
+  .pa-admin-stats { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .pa-stat-card { min-width:0; padding:12px 10px; border-radius:12px; }
+  .pa-stat-card strong { font-size:clamp(18px,5vw,23px); overflow-wrap:anywhere; }
+  .pa-stat-card span, .pa-stat-card small { overflow-wrap:anywhere; line-height:1.4; }
+  .pa-table-wrap { max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #e5eaf2; border-radius:10px; }
+  .pa-users-table { min-width:680px; }
+  .pa-users-table th, .pa-users-table td { padding:10px 9px; }
+  .pa-form { gap:11px; }
+  .pa-form label { line-height:1.4; }
+  .pa-form input, .pa-form select, .pa-form textarea,
+  .pa-admin-note-field textarea { min-height:46px; font-size:16px; }
+  .pa-form textarea, .pa-admin-note-field textarea { min-height:100px; }
+  .pa-btn { min-height:43px; }
+  .pa-full { width:100%; justify-content:center; }
+  .pa-campaign-heading { gap:8px; }
+  .pa-campaign-heading > div { min-width:0; }
+  .pa-campaign-heading p { overflow-wrap:anywhere; }
+  .pa-phone-verification { min-width:0; }
+  .pa-phone-code-form input { font-size:20px; }
+}
+@media (max-width: 390px) {
+  .pa-head { align-items:flex-start; }
+  .pa-head-right { max-width:62%; }
+  .pa-head-right .pa-btn { font-size:10px; padding:8px 9px; }
+  .pa-admin-stats { grid-template-columns:1fr 1fr; }
+  .pa-admin-actions { grid-template-columns:1fr; }
+  .pa-panel, .pa-auth-card { padding:14px 12px; }
+}
