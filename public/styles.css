@@ -1038,3 +1038,34 @@ body.pa-contribution-modal-open{overflow:hidden}
 /* O atalho de compartilhamento existe somente na página pública inicial. */
 body.pa-app-mode .pa-whatsapp-float { display: none !important; }
 .pa-phone-refresh-note { display:block; margin-top:8px; color:#64748b; font-size:11px; line-height:1.4; }
+
+
+/* Bloqueio de cadastro e central de notificações do painel Master */
+.pa-debt-locked { padding:12px 14px; border:1px solid #f2d7a2; border-radius:12px; background:#fffaf0; }
+.pa-debt-locked p { margin:8px 0 0; color:#77551d; font-size:12px; line-height:1.5; }
+.pa-notification-wrap { position:relative; }
+.pa-notification-bell { position:relative; display:inline-flex; align-items:center; gap:7px; }
+.pa-notification-bell svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.pa-notification-bell b { display:grid; place-items:center; min-width:19px; height:19px; padding:0 5px; border-radius:20px; background:#dc2626; color:#fff; font-size:10px; }
+.pa-notification-panel { position:absolute; z-index:600; top:calc(100% + 9px); right:0; width:min(390px,calc(100vw - 28px)); max-height:min(70vh,520px); overflow:auto; border:1px solid #dfe7f3; border-radius:14px; background:#fff; box-shadow:0 14px 38px rgba(15,35,75,.18); color:#172554; }
+.pa-notification-panel[hidden] { display:none !important; }
+.pa-notification-panel-head { position:sticky; top:0; z-index:1; display:flex; justify-content:space-between; align-items:center; gap:8px; padding:13px 14px; border-bottom:1px solid #e8edf5; background:#fff; }
+.pa-notification-panel-head strong { font-size:13px; }
+.pa-notification-panel-head button { border:0; background:none; color:#2563eb; font-size:10px; font-weight:700; cursor:pointer; }
+.pa-notification-item { display:flex; align-items:flex-start; gap:10px; padding:12px 13px; border-bottom:1px solid #edf1f7; }
+.pa-notification-item.is-unread { background:#f2f7ff; }
+.pa-notification-item>div { min-width:0; flex:1; }
+.pa-notification-item a { color:#172554; text-decoration:none; }
+.pa-notification-item a:hover { color:#2563eb; text-decoration:underline; }
+.pa-notification-item strong { display:block; font-size:12px; line-height:1.35; }
+.pa-notification-item p { margin:4px 0; color:#53627d; font-size:11px; line-height:1.45; }
+.pa-notification-item small { color:#8994a8; font-size:9px; }
+.pa-notification-item>button { flex:0 0 27px; width:27px; height:27px; border:1px solid #dbe5f2; border-radius:50%; background:#fff; color:#2563eb; cursor:pointer; }
+.pa-notification-empty { padding:18px 14px; color:#64748b; font-size:12px; }
+@media(max-width:720px) {
+ body.pa-master-mode .pa-notification-panel { position:fixed; top:66px; right:10px; width:min(390px,calc(100vw - 20px)); max-height:calc(100dvh - 155px); }
+ body.pa-master-mode .pa-admin-welcome .pa-admin-actions { grid-template-columns:1fr 1fr; }
+ body.pa-master-mode .pa-admin-welcome .pa-notification-wrap { grid-column:1 / -1; }
+ body.pa-master-mode .pa-admin-welcome .pa-notification-bell { width:100%; justify-content:center; }
+}
+@media(max-width:370px) { body.pa-master-mode .pa-admin-welcome .pa-admin-actions { grid-template-columns:1fr; } }
