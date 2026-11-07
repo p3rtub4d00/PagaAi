@@ -1,4 +1,4 @@
-const CACHE_NAME = "pagaai-shell-v1";
+const CACHE_NAME = "pagaai-shell-v2";
 const APP_SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.webmanifest", "/icons/pagaai.svg"];
 
 self.addEventListener("install", event => {
