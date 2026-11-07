@@ -150,7 +150,7 @@ function setupAdminMobileNavigation(){
  if(!app||!dashboard||document.querySelector(".pa-admin-mobile-nav"))return;
  document.body.classList.add("pa-master-mode");
  const targets=[["pa-admin-stats","Visão","▦"],["pa-admin-phone-verifications","Telefone","☎"],["pa-admin-pending","Pedidos","☷"],["pa-admin-active","Campanhas","♡"],["pa-admin-users","Pessoas","♙"]];
- targets.forEach(([id])=>{const node=document.getElementById(id);const section=node?.closest("section");if(section)section.id="mobile-"+id;else if(node)node.id="mobile-"+id;});
+ targets.forEach(([id])=>{const node=document.getElementById(id);const section=node?.closest("section");if(section)section.id="mobile-"+id;else if(node){const dashboard=node.closest(".pa-admin-dashboard");if(dashboard)dashboard.id="mobile-"+id;}});
  const nav=document.createElement("nav");nav.className="pa-admin-mobile-nav";nav.setAttribute("aria-label","Navegação do painel Master");
  nav.innerHTML=targets.map(([id,label,icon],i)=>'<a href="#mobile-'+id+'" '+(i===0?'class="active"':'')+'><span aria-hidden="true">'+icon+'</span><small>'+label+'</small></a>').join("");
  app.appendChild(nav);
