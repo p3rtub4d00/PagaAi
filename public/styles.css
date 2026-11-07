@@ -383,3 +383,18 @@ body.pa-modal-open{overflow:hidden}
 /* Navegação mobile simplificada: acesso direto a entrar e criar conta, sem menu sanduíche. */
 @media(max-width:620px){.topbar{height:68px;min-height:68px;padding:0 14px;gap:8px;justify-content:space-between}.topbar nav{display:none!important}.topbar .top-actions{display:flex!important;align-items:center;gap:7px;margin-left:auto}.topbar .top-actions .btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:9px 11px;border-radius:11px;font-size:11px;white-space:nowrap;flex:0 0 auto}.topbar .brand{font-size:22px;gap:6px;letter-spacing:-1px;flex:0 0 auto}.topbar .brand-mark{width:34px;height:34px;border-radius:11px;font-size:20px}.topbar .menu-toggle{display:none!important}.topbar.nav-open{height:68px;min-height:68px;flex-wrap:nowrap;padding:0 14px;gap:8px}}
 @media(max-width:360px){.topbar{padding:0 10px}.topbar .top-actions{gap:5px}.topbar .top-actions .btn{padding:8px 9px;font-size:10px}.topbar .brand{font-size:20px}}
+
+
+/* Verificação manual de telefone via WhatsApp, sem integração paga. */
+.pa-phone-verification{border-color:#bfdbfe;background:linear-gradient(145deg,#fff,#f4f8ff)}
+.pa-phone-verification p{font-size:12px;line-height:1.6;color:#52627d}
+.pa-phone-verification .pa-form{margin-top:14px}
+.pa-phone-code-form{display:grid;gap:12px}
+.pa-phone-code-form input{letter-spacing:5px;font-size:20px;font-weight:800;text-align:center}
+.pa-phone-code-result{margin-top:12px;padding:12px;border-radius:10px;background:#f0fdf4;border:1px solid #bbf7d0}
+.pa-phone-code-result p{font-size:13px;color:#166534}
+.pa-phone-code-result strong{font-size:22px;letter-spacing:3px}
+.pa-phone-code-result .pa-btn{display:inline-flex;margin:4px 6px 0 0;text-decoration:none;align-items:center}
+.pa-phone-verified{padding:12px;border-radius:10px;background:#f0fdf4}
+.pa-phone-verified p{margin-bottom:0}
+@media(max-width:720px){.pa-phone-code-result .pa-btn{width:100%;justify-content:center;margin:5px 0}.pa-phone-code-form input{min-height:52px}}
