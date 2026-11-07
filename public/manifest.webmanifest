@@ -1,0 +1,20 @@
+{
+  "name": "PagaAi",
+  "short_name": "PagaAi",
+  "description": "Quem pode, ajuda. Quem precisa, recebe.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#1e40af",
+  "background_color": "#f8fbff",
+  "icons": [
+    {
+      "src": "/icons/pagaai.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
