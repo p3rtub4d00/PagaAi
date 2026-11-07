@@ -11,10 +11,21 @@ function base64ToUint8Array(base64) {
  const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/"));
  return Uint8Array.from([...raw].map(ch => ch.charCodeAt(0)));
 }
+function isPwaAlreadyInstalled() {
+ return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+function syncMobileInstallButton() {
+ const popup = document.querySelector("[data-install-popup]");
+ if (!popup || !window.matchMedia("(max-width: 767px)").matches || isPwaAlreadyInstalled()) return;
+ if (sessionStorage.getItem("pagaai-install-dismissed") !== "1") popup.hidden = false;
+}
 async function setupPwa() {
- if (!("serviceWorker" in navigator)) return;
- try { pwaRegistration = await navigator.serviceWorker.register("/sw.js", { scope: "/" }); }
- catch (error) { console.warn("PWA/service worker:", error.message); }
+ if ("serviceWorker" in navigator) {
+  try { pwaRegistration = await navigator.serviceWorker.register("/sw.js", { scope: "/" }); }
+  catch (error) { console.warn("PWA/service worker:", error.message); }
+ }
+ // Exibe o atalho mesmo em navegadores móveis que não disparam beforeinstallprompt.
+ syncMobileInstallButton();
 }
 function hideInstallPopup() {
  document.querySelectorAll("[data-install-popup]").forEach(popup => popup.hidden = true);
@@ -33,7 +44,12 @@ window.addEventListener("appinstalled", () => {
 });
 async function installPwa() {
  if (!deferredInstallPrompt) {
-   alert("No celular, abra o menu do navegador e escolha “Adicionar à tela inicial” ou “Instalar app”.");
+   const isApple = /iphone|ipad|ipod/i.test(navigator.userAgent);
+   if (isApple) {
+    alert("Para instalar o PagaAi no iPhone: toque em Compartilhar no Safari, escolha “Adicionar à Tela de Início” e confirme em “Adicionar”.");
+   } else {
+    alert("Para instalar o PagaAi: abra o menu ⋮ do Chrome e escolha “Instalar app” ou “Adicionar à tela inicial”. Se a opção não aparecer, abra este site no Chrome atualizado.");
+   }
    return;
  }
  const promptEvent = deferredInstallPrompt;
