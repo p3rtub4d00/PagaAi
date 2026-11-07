@@ -328,3 +328,14 @@ body.landing-page{background:#f8fafc;color:var(--ink)}
 .pa-testimonial-form .pa-anon-option input{width:14px;height:14px}
 .pa-comment-message{padding:12px;border-radius:9px;background:#f8fafc;line-height:1.7;overflow-wrap:anywhere}
 @media(max-width:620px){.pa-comment-fields{grid-template-columns:1fr}.pa-comments{padding:12px}.pa-comments-heading{align-items:flex-start;flex-direction:column}.pa-comment>div{align-items:flex-start;flex-direction:column;gap:3px}}
+
+
+/* Ação administrativa de limpeza total, com destaque e alerta visual */
+.pa-reset-panel{border:1px solid #fecaca!important;background:linear-gradient(145deg,#fffafa,#fff)!important}
+.pa-reset-panel>div{max-width:850px}
+.pa-reset-panel h2{margin:7px 0 9px;color:#991b1b;font:800 17px Manrope,sans-serif}
+.pa-reset-panel p{max-width:760px;color:#7f1d1d;font-size:11px;line-height:1.7}
+.pa-reset-panel ul{margin:12px 0 17px;padding-left:19px;color:#7f1d1d;font-size:10px;line-height:1.9}
+.pa-reset-kicker{font-size:8px;letter-spacing:1.4px;font-weight:900;color:#b91c1c}
+.pa-reset-panel .pa-btn{min-height:42px}
+.pa-reset-panel .pa-btn:disabled{opacity:.6;cursor:wait}
