@@ -363,7 +363,7 @@ app.get("/api/public/debts/:id/comments", async (req, res) => {
     const item = await DebtRequest.findOne({ _id: req.params.id, status: "paid" }).select("_id");
     if (!item) return res.status(404).json({ error: "Mural disponível somente após a quitação." });
     const comments = await PublicComment.find({ request: item._id, status: "approved" }).sort({ createdAt: 1 }).limit(100).lean();
-    res.set("Cache-Control", "no-store").json(comments.map(c => ({ id: String(c._id), type: c.type, author: c.anonymous ? "Anônimo" : c.author, message: c.message, createdAt: c.createdAt })));
+    res.set("Cache-Control", "no-store").json(comments.map(c => ({ id: String(c._id), type: c.type, status: c.status, author: c.anonymous ? "Anônimo" : c.author, message: c.message, createdAt: c.createdAt })));
   } catch { res.status(404).json({ error: "Não foi possível carregar o mural." }); }
 });
 app.post("/api/public/debts/:id/comments", contributionLimiter, async (req, res) => {
@@ -394,7 +394,7 @@ app.post("/api/my/debts/:id/testimonial", requireAuth, contributionLimiter, asyn
   } catch (error) { console.error("testimonial:", error.message); res.status(400).json({ error: "Não foi possível enviar o agradecimento." }); }
 });
 app.get("/api/admin/comments", requireAuth, requireAdmin, async (_req, res) => {
-  const comments = await PublicComment.find({ status: "pending" }).populate("request", "category status").sort({ createdAt: 1 }).limit(300).lean();
+  const comments = await PublicComment.find({ status: { $in: ["pending", "hidden"] } }).populate("request", "category status").sort({ createdAt: 1 }).limit(300).lean();
   res.json(comments.map(c => ({ id: String(c._id), requestId: String(c.request?._id || ""), category: c.request?.category || "", type: c.type, author: c.anonymous ? "Anônimo" : c.author, message: c.message, createdAt: c.createdAt })));
 });
 app.patch("/api/admin/comments/:id", requireAuth, requireAdmin, async (req, res) => {
