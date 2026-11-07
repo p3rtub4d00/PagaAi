@@ -146,8 +146,9 @@ function validCpf(value) {
   digit = (sum * 10) % 11; if (digit === 10) digit = 0;
   return digit === Number(cpf[10]);
 }
+function cleanCnpj(value) { return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
 function validCnpj(value) {
-  const cnpj = cleanCpf(value);
+  const cnpj = cleanCnpj(value);
   if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
   const digit = (base, weights) => {
     const sum = weights.reduce((total, weight, i) => total + Number(base[i]) * weight, 0);
@@ -312,7 +313,7 @@ app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req,
     const donorType = req.body?.donorType === "company" ? "company" : "person";
     const donorName = anonymous ? "" : String(req.body?.donorName || "").trim().slice(0, 100);
     const legalName = String(req.body?.legalName || "").trim().slice(0, 120);
-    const cpfCnpj = cleanCpf(req.body?.cpfCnpj);
+    const cpfCnpj = donorType === "company" ? cleanCnpj(req.body?.cpfCnpj) : cleanCpf(req.body?.cpfCnpj);
     if (!Number.isFinite(value) || value < 1 || value > 1000000) return res.status(400).json({ error: "Informe uma contribuição de pelo menos R$ 1,00." });
     if (!Number.isFinite(supportValue) || supportValue < 0 || supportValue > 1000000 || (supportValue > 0 && supportValue < 1)) return res.status(400).json({ error: "A contribuição voluntária deve ser zero ou de pelo menos R$ 1,00." });
     if (!anonymous && !donorName) return res.status(400).json({ error: "Informe como deseja ser identificado ou escolha contribuir anonimamente." });
