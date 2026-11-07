@@ -240,7 +240,9 @@ app.post("/api/debts", requireAuth, uploadLimiter, upload.single("document"), as
 app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req, res) => {
   let contribution;
   try {
-    const value = Math.round(Number(String(req.body?.amount || "").replace(",", ".")) * 100) / 100;
+    const rawAmount = String(req.body?.amount ?? "").trim().replace(/R\$\s?/gi, "").replace(/\s/g, "");
+    const normalizedAmount = rawAmount.includes(",") ? rawAmount.replace(/\./g, "").replace(",", ".") : rawAmount;
+    const value = Math.round(Number(normalizedAmount) * 100) / 100;
     const anonymous = req.body?.anonymous === true || req.body?.anonymous === "true";
     const donorType = req.body?.donorType === "company" ? "company" : "person";
     const donorName = anonymous ? "" : String(req.body?.donorName || "").trim().slice(0, 100);
