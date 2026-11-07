@@ -223,7 +223,7 @@ app.get("/api/public/impact", async (_req, res) => {
 });
 app.get("/api/debts", async (_req, res) => {
   try {
-    const items = await DebtRequest.find({ status: "approved" }).populate("user", "city state").sort({ createdAt: -1 }).limit(50).lean();
+    const items = await DebtRequest.find({ status: { $in: ["approved", "paid"] } }).populate("user", "city state").sort({ createdAt: -1 }).limit(50).lean();
     res.json(items.map(publicRequest));
   } catch (error) { console.error("public debts:", error.message); res.status(503).json({ error: "Serviço temporariamente indisponível." }); }
 });
@@ -292,6 +292,7 @@ app.patch("/api/admin/requests/:id", requireAuth, requireAdmin, async (req, res)
   const existing = await DebtRequest.findById(req.params.id).populate("user", "phoneVerified");
   if (!existing) return res.status(404).json({ error: "Solicitação não encontrada." });
   if (status === "approved" && !existing.user?.phoneVerified) return res.status(409).json({ error: "Confirme o telefone do beneficiário antes de aprovar e publicar o pedido." });
+  if (status === "paid" && existing.status !== "approved" && existing.status !== "paid") return res.status(409).json({ error: "Somente uma solicitação aprovada pode ser marcada como quitada." });
   existing.status = status;
   existing.adminNote = String(note || "").slice(0, 1000);
   existing.reviewedBy = req.session.sub;
