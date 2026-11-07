@@ -973,3 +973,34 @@ body.pa-contribution-modal-open{overflow:hidden}
     border-radius: 28px;
   }
 }
+
+
+/* Ícones vetoriais consistentes para os destaques e etapas da página inicial */
+.landing-page .visual-float-icon,
+.landing-page .stat-icon,
+.landing-page .role-icon,
+.landing-page .step-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.landing-page .visual-float-icon svg {
+  width: 21px;
+  height: 21px;
+  display: block;
+}
+.landing-page .stat-icon svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+.landing-page .role-icon svg {
+  width: 27px;
+  height: 27px;
+  display: block;
+}
+.landing-page .step-icon svg {
+  width: 23px;
+  height: 23px;
+  display: block;
+}
