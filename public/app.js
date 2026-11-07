@@ -294,6 +294,7 @@ async function loadPublicRequests(){
  }catch{grid.innerHTML='<div class="pa-empty"><h3>Não foi possível carregar as campanhas</h3><p>Tente novamente em instantes.</p></div>';}
 }
 async function boot(){if(adminPath){auth("login",true);return;}try{const r=await api("/api/auth/me");currentUser=r.user;updateLandingActions();if(currentUser.role==="admin")admin();else dashboard();}catch{updateLandingActions();loadPublicRequests();}}
+setupPwa();
 boot();
 // A atualização é manual: a página não recarrega nem substitui formulários automaticamente.
 })();
