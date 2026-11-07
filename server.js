@@ -214,9 +214,16 @@ app.post("/api/debts", requireAuth, uploadLimiter, upload.single("document"), as
     res.status(400).json({ error: error.message?.includes("File too large") ? "O arquivo ultrapassa o limite de 5 MB." : error.message || "Não foi possível registrar a solicitação." });
   }
 });
+app.get("/api/public/impact", async (_req, res) => {
+  try {
+    const paid = await DebtRequest.aggregate([{ $match: { status: "paid" } }, { $group: { _id: null, amount: { $sum: "$amount" }, people: { $addToSet: "$user" }, count: { $sum: 1 } } }]);
+    const totals = paid[0] || { amount: 0, people: [], count: 0 };
+    res.set("Cache-Control", "no-store").json({ peopleHelped: totals.people.length, amountHelped: totals.amount, paidRequests: totals.count });
+  } catch (error) { console.error("public impact:", error.message); res.status(503).json({ error: "Indicadores indisponíveis." }); }
+});
 app.get("/api/debts", async (_req, res) => {
   try {
-    const items = await DebtRequest.find({ status: "approved" }).populate("user", "city state").sort({ createdAt: -1 }).limit(50).lean();
+    const items = await DebtRequest.find({ status: { $in: ["approved", "paid"] } }).populate("user", "city state").sort({ createdAt: -1 }).limit(50).lean();
     res.json(items.map(publicRequest));
   } catch (error) { console.error("public debts:", error.message); res.status(503).json({ error: "Serviço temporariamente indisponível." }); }
 });
@@ -249,10 +256,24 @@ app.post("/api/my/debts/:id/complement", requireAuth, uploadLimiter, upload.sing
     res.status(400).json({ error: error.message || "Não foi possível enviar o complemento." });
   }
 });
+app.get("/api/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
+  const [users, requests, byStatus, paid] = await Promise.all([
+    User.countDocuments({ role: "beneficiary" }), DebtRequest.countDocuments(),
+    DebtRequest.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+    DebtRequest.aggregate([{ $match: { status: "paid" } }, { $group: { _id: null, amount: { $sum: "$amount" }, people: { $addToSet: "$user" }, count: { $sum: 1 } } }])
+  ]);
+  const counts = Object.fromEntries(byStatus.map(x => [x._id, x.count]));
+  const settled = paid[0] || { amount: 0, people: [], count: 0 };
+  res.set("Cache-Control", "no-store").json({ users, requests, pending: counts.pending_review || 0, needsMoreInfo: counts.needs_more_info || 0, approved: counts.approved || 0, rejected: counts.rejected || 0, paid: counts.paid || 0, amountHelped: settled.amount, peopleHelped: settled.people.length, paidRequests: settled.count });
+});
+app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res) => {
+  const users = await User.find({ role: "beneficiary" }).select("+cpf fullName phone phoneVerified city state createdAt").sort({ createdAt: -1 }).limit(500).lean();
+  res.json(users.map(user => ({ id: String(user._id), fullName: user.fullName, cpf: user.cpf, phone: user.phone, phoneVerified: user.phoneVerified, city: user.city, state: user.state, createdAt: user.createdAt })));
+});
 app.get("/api/admin/requests", requireAuth, requireAdmin, async (_req, res) => {
-  const items = await DebtRequest.find().populate("user", "fullName phone phoneVerified city state").sort({ createdAt: -1 }).limit(200).lean();
+  const items = await DebtRequest.find().populate("user", "+cpf fullName phone phoneVerified city state").sort({ createdAt: -1 }).limit(500).lean();
   res.json(items.map(item => ({
-    id: String(item._id), userId: String(item.user?._id || ""), fullName: item.user?.fullName, phone: item.user?.phone, phoneVerified: item.user?.phoneVerified,
+    id: String(item._id), userId: String(item.user?._id || ""), fullName: item.user?.fullName, cpf: item.user?.cpf || "", phone: item.user?.phone, phoneVerified: item.user?.phoneVerified,
     city: item.user?.city, state: item.user?.state, category: item.category, creditor: item.creditor, amount: item.amount,
     description: item.description, status: item.status, adminNote: item.adminNote, createdAt: item.createdAt, documentId: String(item.document)
   })));
@@ -265,12 +286,13 @@ app.get("/api/admin/documents/:id", requireAuth, requireAdmin, async (req, res) 
   res.setHeader("Cache-Control", "no-store"); res.send(doc.data);
 });
 app.patch("/api/admin/requests/:id", requireAuth, requireAdmin, async (req, res) => {
-  const allowed = ["approved", "rejected", "needs_more_info"];
+  const allowed = ["approved", "rejected", "needs_more_info", "paid"];
   const { status, note } = req.body || {};
   if (!allowed.includes(status)) return res.status(400).json({ error: "Status inválido." });
   const existing = await DebtRequest.findById(req.params.id).populate("user", "phoneVerified");
   if (!existing) return res.status(404).json({ error: "Solicitação não encontrada." });
   if (status === "approved" && !existing.user?.phoneVerified) return res.status(409).json({ error: "Confirme o telefone do beneficiário antes de aprovar e publicar o pedido." });
+  if (status === "paid" && existing.status !== "approved" && existing.status !== "paid") return res.status(409).json({ error: "Somente uma solicitação aprovada pode ser marcada como quitada." });
   existing.status = status;
   existing.adminNote = String(note || "").slice(0, 1000);
   existing.reviewedBy = req.session.sub;
