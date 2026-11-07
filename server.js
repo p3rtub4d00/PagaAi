@@ -146,6 +146,19 @@ function validCpf(value) {
   digit = (sum * 10) % 11; if (digit === 10) digit = 0;
   return digit === Number(cpf[10]);
 }
+function validCnpj(value) {
+  const cnpj = cleanCpf(value);
+  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+  const digit = (base, weights) => {
+    const sum = weights.reduce((total, weight, i) => total + Number(base[i]) * weight, 0);
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+  const first = digit(cnpj.slice(0, 12), [5,4,3,2,9,8,7,6,5,4,3,2]);
+  if (first !== Number(cnpj[12])) return false;
+  const second = digit(cnpj.slice(0, 13), [6,5,4,3,2,9,8,7,6,5,4,3,2]);
+  return second === Number(cnpj[13]);
+}
 function hasValidFileSignature(file) {
   const b = file.buffer;
   if (file.mimetype === "application/pdf") return b.subarray(0, 5).toString() === "%PDF-";
@@ -298,15 +311,20 @@ app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req,
     const anonymous = req.body?.anonymous === true || req.body?.anonymous === "true";
     const donorType = req.body?.donorType === "company" ? "company" : "person";
     const donorName = anonymous ? "" : String(req.body?.donorName || "").trim().slice(0, 100);
+    const legalName = String(req.body?.legalName || "").trim().slice(0, 120);
+    const cpfCnpj = cleanCpf(req.body?.cpfCnpj);
     if (!Number.isFinite(value) || value < 1 || value > 1000000) return res.status(400).json({ error: "Informe uma contribuição de pelo menos R$ 1,00." });
     if (!Number.isFinite(supportValue) || supportValue < 0 || supportValue > 1000000 || (supportValue > 0 && supportValue < 1)) return res.status(400).json({ error: "A contribuição voluntária deve ser zero ou de pelo menos R$ 1,00." });
-    if (!anonymous && !donorName) return res.status(400).json({ error: "Informe seu nome ou escolha contribuir anonimamente." });
+    if (!anonymous && !donorName) return res.status(400).json({ error: "Informe como deseja ser identificado ou escolha contribuir anonimamente." });
+    if (legalName.length < 3) return res.status(400).json({ error: "Informe o nome completo ou razão social do titular do documento." });
+    if (donorType === "company" ? !validCnpj(cpfCnpj) : !validCpf(cpfCnpj)) return res.status(400).json({ error: donorType === "company" ? "Informe um CNPJ válido." : "Informe um CPF válido." });
     const item = await DebtRequest.findOne({ _id: req.params.id, status: "approved" });
     if (!item) return res.status(404).json({ error: "Este pedido não está recebendo contribuições no momento." });
     const remaining = Math.max(0, item.amount - Number(item.raisedAmount || 0));
     if (value > remaining) return res.status(400).json({ error: "A contribuição ultrapassa o valor que falta. Restam " + remaining.toFixed(2) + "." });
     const customer = await asaasRequest("/customers", { method: "POST", body: {
-      name: donorName || "Apoiador anônimo PagaAi",
+      name: legalName,
+      cpfCnpj,
       notificationDisabled: true
     }});
     contribution = await Contribution.create({ request: item._id, amount: value, donorName, donorType, anonymous, method: "pix", status: "pending" });
