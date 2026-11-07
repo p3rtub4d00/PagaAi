@@ -40,6 +40,7 @@ app.use((req, _res, next) => {
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." } });
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Limite de envios atingido. Tente novamente mais tarde." } });
 const contributionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas tentativas de gerar Pix em pouco tempo. Aguarde e tente novamente." } });
+const phoneVerificationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas solicitações de verificação. Aguarde e tente novamente mais tarde." } });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE, files: 1 },
@@ -54,6 +55,11 @@ const userSchema = new mongoose.Schema({
   cpf: { type: String, required: true, unique: true, select: false },
   phone: { type: String, required: true },
   phoneVerified: { type: Boolean, default: false },
+  phoneVerificationStatus: { type: String, enum: ["none", "requested", "code_sent", "verified"], default: "none", index: true },
+  phoneVerificationCodeHash: { type: String, default: undefined, select: false },
+  phoneVerificationExpiresAt: { type: Date, default: null },
+  phoneVerificationRequestedAt: { type: Date, default: null },
+  phoneVerificationAttempts: { type: Number, default: 0 },
   termsAcceptedAt: { type: Date, required: true },
   privacyNoticeVersion: { type: String, required: true, default: "1.0" },
   city: { type: String, required: true, trim: true, maxlength: 80 },
@@ -185,7 +191,10 @@ function requireAdmin(req, res, next) {
   next();
 }
 function publicUser(user) {
-  return { id: String(user._id), fullName: user.fullName, phone: user.phone, phoneVerified: user.phoneVerified, city: user.city, state: user.state, role: user.role, createdAt: user.createdAt };
+  return { id: String(user._id), fullName: user.fullName, phone: user.phone, phoneVerified: user.phoneVerified, phoneVerificationStatus: user.phoneVerificationStatus || "none", city: user.city, state: user.state, role: user.role, createdAt: user.createdAt };
+}
+function phoneVerificationHash(userId, code) {
+  return crypto.createHmac("sha256", JWT_SECRET).update(String(userId) + ":" + String(code)).digest("hex");
 }
 function publicRequest(item) {
   const raised = Math.min(Number(item.raisedAmount || 0), Number(item.amount || 0));
@@ -194,7 +203,7 @@ function publicRequest(item) {
 
 app.get("/api/health", (_req, res) => res.json({
   status: "ok", database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-  uploads: "private-mongodb", phoneVerification: "manual-admin-review"
+  uploads: "private-mongodb", phoneVerification: "manual-whatsapp-code"
 }));
 
 app.post("/api/auth/register", authLimiter, async (req, res) => {
@@ -233,6 +242,60 @@ app.post("/api/admin/login", authLimiter, async (req, res) => {
     res.json({ user: publicUser(user) });
   } catch (error) { console.error("admin login:", error.message); res.status(500).json({ error: "Não foi possível acessar a administração." }); }
 });
+
+app.post("/api/my/phone-verification/request", requireAuth, phoneVerificationLimiter, async (req, res) => {
+  if (req.session.role !== "beneficiary") return res.status(403).json({ error: "Apenas beneficiários podem solicitar a confirmação do telefone." });
+  const user = await User.findById(req.session.sub);
+  if (!user || !user.active) return res.status(404).json({ error: "Conta não encontrada." });
+  if (user.phoneVerified) return res.status(409).json({ error: "Seu telefone já está confirmado." });
+  const now = new Date();
+  if (user.phoneVerificationStatus === "requested" && user.phoneVerificationRequestedAt && now - user.phoneVerificationRequestedAt < 10 * 60 * 1000) {
+    return res.json({ ok: true, status: "requested", message: "Sua solicitação já está na fila da equipe. Aguarde o contato pelo WhatsApp." });
+  }
+  if (user.phoneVerificationStatus === "code_sent" && user.phoneVerificationExpiresAt && user.phoneVerificationExpiresAt > now) {
+    return res.json({ ok: true, status: "code_sent", message: "A equipe já enviou um código. Confira o WhatsApp cadastrado e informe o código abaixo." });
+  }
+  user.phoneVerificationStatus = "requested";
+  user.phoneVerificationRequestedAt = now;
+  user.phoneVerificationCodeHash = undefined;
+  user.phoneVerificationExpiresAt = null;
+  user.phoneVerificationAttempts = 0;
+  await user.save();
+  res.json({ ok: true, status: "requested", message: "Solicitação enviada. A equipe PagaAi vai gerar seu código e enviar pelo WhatsApp cadastrado." });
+});
+app.post("/api/my/phone-verification/confirm", requireAuth, phoneVerificationLimiter, async (req, res) => {
+  if (req.session.role !== "beneficiary") return res.status(403).json({ error: "Apenas beneficiários podem confirmar o telefone." });
+  const code = String(req.body?.code || "").replace(/\D/g, "");
+  if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: "Informe o código de 6 números recebido pelo WhatsApp." });
+  const user = await User.findById(req.session.sub).select("+phoneVerificationCodeHash");
+  if (!user || !user.active) return res.status(404).json({ error: "Conta não encontrada." });
+  if (user.phoneVerified) return res.json({ ok: true, phoneVerified: true, message: "Telefone já confirmado." });
+  if (user.phoneVerificationStatus !== "code_sent" || !user.phoneVerificationCodeHash) return res.status(409).json({ error: "Ainda não existe um código ativo. Solicite a confirmação e aguarde a equipe." });
+  if (!user.phoneVerificationExpiresAt || user.phoneVerificationExpiresAt <= new Date()) {
+    user.phoneVerificationStatus = "requested"; user.phoneVerificationCodeHash = undefined; user.phoneVerificationExpiresAt = null; user.phoneVerificationAttempts = 0; await user.save();
+    return res.status(410).json({ error: "O código expirou. Sua solicitação voltou para a fila da equipe." });
+  }
+  if (user.phoneVerificationAttempts >= 5) return res.status(429).json({ error: "Limite de tentativas atingido. Aguarde um novo código da equipe." });
+  const expected = Buffer.from(user.phoneVerificationCodeHash, "hex");
+  const actual = Buffer.from(phoneVerificationHash(user._id, code), "hex");
+  const valid = expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  if (!valid) {
+    user.phoneVerificationAttempts += 1;
+    if (user.phoneVerificationAttempts >= 5) {
+      user.phoneVerificationStatus = "requested"; user.phoneVerificationCodeHash = undefined; user.phoneVerificationExpiresAt = null;
+    }
+    await user.save();
+    return res.status(400).json({ error: user.phoneVerificationAttempts >= 5 ? "Código incorreto. Limite atingido; aguarde um novo código da equipe." : "Código incorreto. Confira a mensagem e tente novamente." });
+  }
+  user.phoneVerified = true;
+  user.phoneVerificationStatus = "verified";
+  user.phoneVerificationCodeHash = undefined;
+  user.phoneVerificationExpiresAt = null;
+  user.phoneVerificationAttempts = 0;
+  await user.save();
+  res.json({ ok: true, phoneVerified: true, message: "Telefone confirmado com sucesso. Agora a equipe pode analisar sua solicitação." });
+});
+
 app.post("/api/auth/logout", (_req, res) => {
   res.clearCookie(COOKIE_NAME, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/" }); res.json({ ok: true });
 });
@@ -588,6 +651,28 @@ app.post("/api/admin/reset", requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ error: "A limpeza foi interrompida por um erro no banco. Atualize o painel e confira os registros antes de tentar novamente." });
   }
 });
+
+app.get("/api/admin/phone-verifications", requireAuth, requireAdmin, async (_req, res) => {
+  const users = await User.find({ role: "beneficiary", phoneVerified: false, phoneVerificationStatus: { $in: ["requested", "code_sent"] } })
+    .select("fullName phone phoneVerificationStatus phoneVerificationRequestedAt phoneVerificationExpiresAt createdAt")
+    .sort({ phoneVerificationRequestedAt: 1 }).limit(300).lean();
+  res.json(users.map(user => ({ id: String(user._id), fullName: user.fullName, phone: user.phone, status: user.phoneVerificationStatus, requestedAt: user.phoneVerificationRequestedAt, expiresAt: user.phoneVerificationExpiresAt, createdAt: user.createdAt })));
+});
+app.post("/api/admin/users/:id/phone-verification-code", requireAuth, requireAdmin, async (req, res) => {
+  const user = await User.findOne({ _id: req.params.id, role: "beneficiary" }).select("+phoneVerificationCodeHash");
+  if (!user) return res.status(404).json({ error: "Beneficiário não encontrado." });
+  if (user.phoneVerified) return res.status(409).json({ error: "Este telefone já está confirmado." });
+  if (!["requested", "code_sent"].includes(user.phoneVerificationStatus)) return res.status(409).json({ error: "O beneficiário ainda não solicitou a confirmação." });
+  const code = crypto.randomInt(0, 1000000).toString().padStart(6, "0");
+  user.phoneVerificationCodeHash = phoneVerificationHash(user._id, code);
+  user.phoneVerificationExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  user.phoneVerificationStatus = "code_sent";
+  user.phoneVerificationAttempts = 0;
+  await user.save();
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, code, phone: user.phone, fullName: user.fullName, expiresAt: user.phoneVerificationExpiresAt, message: "Código gerado. Envie pelo WhatsApp cadastrado; ele expira em 10 minutos." });
+});
+
 app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res) => {
   const users = await User.find({ role: "beneficiary" }).select("+cpf fullName phone phoneVerified city state createdAt").sort({ createdAt: -1 }).limit(500).lean();
   res.json(users.map(user => ({ id: String(user._id), fullName: user.fullName, cpf: user.cpf, phone: user.phone, phoneVerified: user.phoneVerified, city: user.city, state: user.state, createdAt: user.createdAt })));
@@ -623,10 +708,10 @@ app.patch("/api/admin/requests/:id", requireAuth, requireAdmin, async (req, res)
   res.json({ ok: true, status: existing.status });
 });
 app.patch("/api/admin/users/:id/phone-verification", requireAuth, requireAdmin, async (req, res) => {
-  const verified = Boolean(req.body?.verified);
-  const user = await User.findByIdAndUpdate(req.params.id, { phoneVerified: verified }, { new: true });
+  if (req.body?.verified === true) return res.status(409).json({ error: "A confirmação deve ser feita pelo código enviado ao beneficiário." });
+  const user = await User.findByIdAndUpdate(req.params.id, { phoneVerified: false, phoneVerificationStatus: "none", phoneVerificationCodeHash: undefined, phoneVerificationExpiresAt: null, phoneVerificationAttempts: 0 }, { new: true });
   if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
-  if (!verified) await DebtRequest.updateMany({ user: user._id, status: "approved" }, { $set: { status: "pending_review", adminNote: "Telefone precisa ser confirmado novamente." } });
+  await DebtRequest.updateMany({ user: user._id, status: "approved" }, { $set: { status: "pending_review", adminNote: "Telefone precisa ser confirmado novamente." } });
   res.json({ ok: true, phoneVerified: user.phoneVerified });
 });
 
