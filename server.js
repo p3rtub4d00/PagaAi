@@ -148,6 +148,14 @@ const pushSubscriptionSchema = new mongoose.Schema({
   userAgent: { type: String, maxlength: 500, default: "" },
   lastUsedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
+const analyticsVisitSchema = new mongoose.Schema({
+  visitorHash: { type: String, required: true, index: true },
+  source: { type: String, required: true, maxlength: 40, index: true },
+  visitedAt: { type: Date, default: Date.now, index: true }
+}, { versionKey: false });
+analyticsVisitSchema.index({ visitedAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 180 });
+const AnalyticsVisit = mongoose.models.PagaAiAnalyticsVisit || mongoose.model("PagaAiAnalyticsVisit", analyticsVisitSchema);
+
 const adminNotificationSchema = new mongoose.Schema({
   admin: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiUser", required: true, index: true },
   type: { type: String, required: true, maxlength: 40 },
@@ -271,6 +279,22 @@ function requireAdmin(req, res, next) {
 function publicUser(user) {
   return { id: String(user._id), fullName: user.fullName, phone: user.phone, phoneVerified: user.phoneVerified, phoneVerificationStatus: user.phoneVerificationStatus || "none", city: user.city, state: user.state, role: user.role, createdAt: user.createdAt };
 }
+function classifyVisitSource(rawReferrer, rawUtm) {
+  const utm = String(rawUtm || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
+  const value = utm || String(rawReferrer || "").slice(0, 500);
+  if (!value) return "Direto";
+  const source = value.toLowerCase();
+  if (source.includes("google") || source.includes("bing") || source.includes("yahoo") || source.includes("duckduckgo")) return "Busca";
+  if (source.includes("instagram")) return "Instagram";
+  if (source.includes("facebook") || source.includes("fb.com")) return "Facebook";
+  if (source.includes("whatsapp") || source.includes("wa.me")) return "WhatsApp";
+  if (source.includes("tiktok")) return "TikTok";
+  if (source.includes("youtube") || source.includes("youtu.be")) return "YouTube";
+  if (source.includes("linkedin")) return "LinkedIn";
+  if (utm) return utm.slice(0, 1).toUpperCase() + utm.slice(1);
+  try { return new URL(rawReferrer).hostname.replace(/^www\\./, "").slice(0, 40) || "Outro"; }
+  catch { return "Outro"; }
+}
 function phoneVerificationHash(userId, code) {
   return crypto.createHmac("sha256", JWT_SECRET).update(String(userId) + ":" + String(code)).digest("hex");
 }
@@ -278,6 +302,37 @@ function publicRequest(item) {
   const raised = Math.min(Number(item.raisedAmount || 0), Number(item.amount || 0));
   return { id: String(item._id), city: item.user?.city || "", state: item.user?.state || "", category: item.category, amount: item.amount, raisedAmount: raised, remainingAmount: Math.max(0, item.amount - raised), progress: item.amount > 0 ? Math.min(100, Math.round(raised / item.amount * 100)) : 0, description: item.description, status: item.status, hasPublicProof: Boolean(item.publicProof), createdAt: item.createdAt };
 }
+
+const visitLimiter = rateLimit({ windowMs: 60 * 1000, limit: 40, standardHeaders: "draft-7", legacyHeaders: false });
+app.post("/api/analytics/visit", visitLimiter, async (req, res) => {
+  try {
+    let visitorId = req.cookies?.pagaai_visitor;
+    if (!visitorId || !/^[a-f0-9]{64}$/.test(visitorId)) {
+      visitorId = crypto.randomBytes(32).toString("hex");
+      res.cookie("pagaai_visitor", visitorId, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 180 * 24 * 60 * 60 * 1000, path: "/" });
+    }
+    const visitorHash = crypto.createHmac("sha256", JWT_SECRET).update(visitorId).digest("hex");
+    const source = classifyVisitSource(req.body?.referrer, req.body?.utmSource);
+    await AnalyticsVisit.create({ visitorHash, source, visitedAt: new Date() });
+    res.status(202).json({ ok: true });
+  } catch (error) {
+    console.error("analytics visit:", error.message);
+    res.status(202).json({ ok: false });
+  }
+});
+app.get("/api/admin/analytics", requireAuth, requireAdmin, async (_req, res) => {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const [total, todayTotal, unique, todayUnique, sources] = await Promise.all([
+    AnalyticsVisit.countDocuments({ visitedAt: { $gte: since } }),
+    AnalyticsVisit.countDocuments({ visitedAt: { $gte: today } }),
+    AnalyticsVisit.distinct("visitorHash", { visitedAt: { $gte: since } }),
+    AnalyticsVisit.distinct("visitorHash", { visitedAt: { $gte: today } }),
+    AnalyticsVisit.aggregate([{ $match: { visitedAt: { $gte: since } } }, { $group: { _id: "$source", visits: { $sum: 1 } } }, { $sort: { visits: -1 } }, { $limit: 8 }])
+  ]);
+  res.set("Cache-Control", "no-store").json({ total, today: todayTotal, unique: unique.length, todayUnique: todayUnique.length, sources: sources.map(item => ({ source: item._id, visits: item.visits })) });
+});
 
 app.get("/api/health", (_req, res) => res.json({
   status: "ok", database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
