@@ -2,9 +2,7 @@
 const main=document.querySelector("main"); if(!main)return;
 const originalMain=main.innerHTML; let currentUser=null; const adminPath=/^\/admin\/?$/i.test(location.pathname);
 const topbar=document.querySelector(".topbar");
-const menuButton=document.querySelector(".menu-toggle"), nav=document.querySelector(".topbar nav");
-if(menuButton&&nav)menuButton.addEventListener("click",()=>{const opened=nav.classList.toggle("nav-open");menuButton.setAttribute("aria-expanded",String(opened));menuButton.textContent=opened?"×":"☰";});
-if(nav)nav.addEventListener("click",event=>{if(event.target.closest("a")){nav.classList.remove("nav-open");menuButton?.setAttribute("aria-expanded","false");if(menuButton)menuButton.textContent="☰";}});
+const nav=document.querySelector(".topbar nav");
 
 const states="AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(" ");
 const categories=["Energia Elétrica","Água","Aluguel","Tratamento Médico","Alimentação","Educação","Outro"];
@@ -17,7 +15,7 @@ function updateLandingActions(){
  const enter=topbar?.querySelector('[data-screen="overview"]');
  const help=topbar?.querySelector('[data-role="beneficiary"]');
  if(enter)enter.textContent=currentUser?"Minha conta":"Entrar";
- if(help)help.textContent=currentUser?"Minhas solicitações":"Pedir ajuda";
+ if(help)help.textContent=currentUser?"Minhas solicitações":"Criar conta";
 }
 function auth(mode,admin){
  setAppView(true);
