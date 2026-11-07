@@ -39,6 +39,7 @@ app.use((req, _res, next) => {
 });
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." } });
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Limite de envios atingido. Tente novamente mais tarde." } });
+const contributionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Muitas simulações em pouco tempo. Aguarde e tente novamente." } });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE, files: 1 },
@@ -69,7 +70,9 @@ const requestSchema = new mongoose.Schema({
   dueDate: { type: Date, default: null },
   description: { type: String, trim: true, maxlength: 1200, default: "" },
   document: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiDocument", required: true },
-  status: { type: String, enum: ["pending_review", "needs_more_info", "approved", "rejected", "paid"], default: "pending_review", index: true },
+  status: { type: String, enum: ["pending_review", "needs_more_info", "approved", "rejected", "goal_reached", "awaiting_payment", "paid"], default: "pending_review", index: true },
+  raisedAmount: { type: Number, default: 0, min: 0 },
+  publicProof: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiPublicProof", default: null },
   adminNote: { type: String, maxlength: 1000, default: "" },
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiUser", default: null },
   reviewedAt: { type: Date, default: null }
@@ -84,9 +87,28 @@ const documentSchema = new mongoose.Schema({
   data: { type: Buffer, required: true, select: false }
 }, { timestamps: true });
 
+const contributionSchema = new mongoose.Schema({
+  request: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiDebtRequest", required: true, index: true },
+  amount: { type: Number, required: true, min: 1, max: 1000000 },
+  donorName: { type: String, trim: true, maxlength: 100, default: "" },
+  donorType: { type: String, enum: ["person", "company"], default: "person" },
+  anonymous: { type: Boolean, default: true },
+  method: { type: String, enum: ["pix_simulation"], default: "pix_simulation" },
+  status: { type: String, enum: ["simulated"], default: "simulated" }
+}, { timestamps: true });
+const publicProofSchema = new mongoose.Schema({
+  request: { type: mongoose.Schema.Types.ObjectId, ref: "PagaAiDebtRequest", required: true, index: true },
+  filename: { type: String, required: true },
+  contentType: { type: String, required: true, enum: ["application/pdf", "image/jpeg", "image/png"] },
+  size: { type: Number, required: true, max: MAX_FILE_SIZE },
+  data: { type: Buffer, required: true, select: false }
+}, { timestamps: true });
+
 const User = mongoose.models.PagaAiUser || mongoose.model("PagaAiUser", userSchema);
 const DebtRequest = mongoose.models.PagaAiDebtRequest || mongoose.model("PagaAiDebtRequest", requestSchema);
 const DebtDocument = mongoose.models.PagaAiDocument || mongoose.model("PagaAiDocument", documentSchema);
+const Contribution = mongoose.models.PagaAiContribution || mongoose.model("PagaAiContribution", contributionSchema);
+const PublicProof = mongoose.models.PagaAiPublicProof || mongoose.model("PagaAiPublicProof", publicProofSchema);
 
 function cleanCpf(value) { return String(value || "").replace(/\D/g, ""); }
 function validCpf(value) {
@@ -129,7 +151,8 @@ function publicUser(user) {
   return { id: String(user._id), fullName: user.fullName, phone: user.phone, phoneVerified: user.phoneVerified, city: user.city, state: user.state, role: user.role, createdAt: user.createdAt };
 }
 function publicRequest(item) {
-  return { id: String(item._id), city: item.user?.city || "", state: item.user?.state || "", category: item.category, amount: item.amount, description: item.description, status: item.status, createdAt: item.createdAt };
+  const raised = Math.min(Number(item.raisedAmount || 0), Number(item.amount || 0));
+  return { id: String(item._id), city: item.user?.city || "", state: item.user?.state || "", category: item.category, amount: item.amount, raisedAmount: raised, remainingAmount: Math.max(0, item.amount - raised), progress: item.amount > 0 ? Math.min(100, Math.round(raised / item.amount * 100)) : 0, description: item.description, status: item.status, hasPublicProof: Boolean(item.publicProof), createdAt: item.createdAt };
 }
 
 app.get("/api/health", (_req, res) => res.json({
@@ -214,6 +237,43 @@ app.post("/api/debts", requireAuth, uploadLimiter, upload.single("document"), as
     res.status(400).json({ error: error.message?.includes("File too large") ? "O arquivo ultrapassa o limite de 5 MB." : error.message || "Não foi possível registrar a solicitação." });
   }
 });
+app.post("/api/public/debts/:id/contributions", contributionLimiter, async (req, res) => {
+  let contribution;
+  try {
+    const value = Math.round(Number(String(req.body?.amount || "").replace(",", ".")) * 100) / 100;
+    const anonymous = req.body?.anonymous !== false && req.body?.anonymous !== "false";
+    const donorType = req.body?.donorType === "company" ? "company" : "person";
+    const donorName = anonymous ? "" : String(req.body?.donorName || "").trim().slice(0, 100);
+    if (!Number.isFinite(value) || value < 1 || value > 1000000) return res.status(400).json({ error: "Informe uma contribuição simulada de pelo menos R$ 1,00." });
+    if (!anonymous && !donorName) return res.status(400).json({ error: "Informe seu nome ou o nome da empresa, ou escolha contribuir anonimamente." });
+    const item = await DebtRequest.findOne({ _id: req.params.id, status: "approved" });
+    if (!item) return res.status(404).json({ error: "Este pedido não está recebendo contribuições no momento." });
+    const remaining = Math.max(0, item.amount - Number(item.raisedAmount || 0));
+    if (value > remaining) return res.status(400).json({ error: "A contribuição ultrapassa o valor que falta. Restam " + remaining.toFixed(2) + "." });
+    contribution = await Contribution.create({ request: item._id, amount: value, donorName, donorType, anonymous, method: "pix_simulation", status: "simulated" });
+    const updated = await DebtRequest.findOneAndUpdate(
+      { _id: item._id, status: "approved", $expr: { $lte: [{ $add: [{ $ifNull: ["$raisedAmount", 0] }, value] }, "$amount"] } },
+      { $inc: { raisedAmount: value } }, { new: true }
+    );
+    if (!updated) {
+      await Contribution.deleteOne({ _id: contribution._id });
+      return res.status(409).json({ error: "Outra contribuição completou ou alterou a meta. Atualize a página." });
+    }
+    if (updated.raisedAmount >= updated.amount) {
+      updated.raisedAmount = updated.amount;
+      updated.status = "goal_reached";
+      await updated.save();
+    }
+    res.set("Cache-Control", "no-store").status(201).json({
+      ok: true, simulated: true, message: updated.status === "goal_reached" ? "Simulação concluída: a meta foi atingida. O beneficiário poderá enviar o boleto atualizado." : "Contribuição simulada registrada. A barra de progresso foi atualizada.",
+      raisedAmount: updated.raisedAmount, amount: updated.amount, remainingAmount: Math.max(0, updated.amount - updated.raisedAmount), progress: Math.min(100, Math.round(updated.raisedAmount / updated.amount * 100)), status: updated.status
+    });
+  } catch (error) {
+    if (contribution) await Contribution.deleteOne({ _id: contribution._id }).catch(() => {});
+    console.error("contribution simulation:", error.message);
+    res.status(400).json({ error: "Não foi possível registrar a simulação." });
+  }
+});
 app.get("/api/public/impact", async (_req, res) => {
   try {
     const paid = await DebtRequest.aggregate([{ $match: { status: "paid" } }, { $group: { _id: null, amount: { $sum: "$amount" }, people: { $addToSet: "$user" }, count: { $sum: 1 } } }]);
@@ -223,13 +283,32 @@ app.get("/api/public/impact", async (_req, res) => {
 });
 app.get("/api/debts", async (_req, res) => {
   try {
-    const items = await DebtRequest.find({ status: { $in: ["approved", "paid"] } }).populate("user", "city state").sort({ createdAt: -1 }).limit(50).lean();
+    const items = await DebtRequest.find({ status: { $in: ["approved", "goal_reached", "awaiting_payment", "paid"] } }).populate("user", "city state").sort({ createdAt: -1 }).limit(50).lean();
     res.json(items.map(publicRequest));
   } catch (error) { console.error("public debts:", error.message); res.status(503).json({ error: "Serviço temporariamente indisponível." }); }
 });
 app.get("/api/my/debts", requireAuth, async (req, res) => {
   const items = await DebtRequest.find({ user: req.session.sub }).sort({ createdAt: -1 }).lean();
-  res.json(items.map(item => ({ id: String(item._id), category: item.category, creditor: item.creditor, amount: item.amount, status: item.status, adminNote: item.adminNote, createdAt: item.createdAt })));
+  res.json(items.map(item => ({ id: String(item._id), category: item.category, creditor: item.creditor, amount: item.amount, raisedAmount: item.raisedAmount || 0, remainingAmount: Math.max(0, item.amount - (item.raisedAmount || 0)), status: item.status, adminNote: item.adminNote, hasPublicProof: Boolean(item.publicProof), createdAt: item.createdAt })));
+});
+app.post("/api/my/debts/:id/updated-bill", requireAuth, uploadLimiter, upload.single("document"), async (req, res) => {
+  try {
+    if (req.session.role !== "beneficiary") return res.status(403).json({ error: "Apenas o beneficiário pode enviar o boleto atualizado." });
+    if (!req.file || !hasValidFileSignature(req.file)) return res.status(400).json({ error: "Anexe um boleto atualizado válido em PDF, JPG ou PNG." });
+    const item = await DebtRequest.findOne({ _id: req.params.id, user: req.session.sub, status: "goal_reached" });
+    if (!item) return res.status(409).json({ error: "O pedido ainda não atingiu a meta ou o boleto já foi enviado." });
+    const replacement = await DebtDocument.create({ request: item._id, owner: req.session.sub, filename: path.basename(req.file.originalname).slice(0, 140), contentType: req.file.mimetype, size: req.file.size, sha256: crypto.createHash("sha256").update(req.file.buffer).digest("hex"), data: req.file.buffer });
+    const previousId = item.document;
+    item.document = replacement._id;
+    item.status = "awaiting_payment";
+    item.adminNote = "Boleto atualizado recebido. Aguardando conferência e pagamento pela equipe PagaAi.";
+    await item.save();
+    await DebtDocument.deleteOne({ _id: previousId });
+    res.json({ ok: true, message: "Boleto atualizado enviado. A equipe PagaAi fará a conferência." });
+  } catch (error) {
+    console.error("updated bill:", error.message);
+    res.status(400).json({ error: "Não foi possível enviar o boleto atualizado." });
+  }
 });
 
 app.post("/api/my/debts/:id/complement", requireAuth, uploadLimiter, upload.single("document"), async (req, res) => {
@@ -256,6 +335,42 @@ app.post("/api/my/debts/:id/complement", requireAuth, uploadLimiter, upload.sing
     res.status(400).json({ error: error.message || "Não foi possível enviar o complemento." });
   }
 });
+app.get("/api/public/debts/:id/payment-proof", async (req, res) => {
+  try {
+    const item = await DebtRequest.findOne({ _id: req.params.id, status: "paid" }).select("publicProof");
+    if (!item?.publicProof) return res.status(404).json({ error: "Comprovante público indisponível." });
+    const proof = await PublicProof.findById(item.publicProof).select("+data");
+    if (!proof) return res.status(404).json({ error: "Comprovante não encontrado." });
+    res.setHeader("Content-Type", proof.contentType);
+    res.setHeader("Content-Disposition", "inline; filename=" + encodeURIComponent("comprovante-pagaai-" + proof._id + (proof.contentType === "application/pdf" ? ".pdf" : proof.contentType === "image/png" ? ".png" : ".jpg")));
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.send(proof.data);
+  } catch { res.status(404).json({ error: "Comprovante público indisponível." }); }
+});
+app.get("/api/admin/contributions", requireAuth, requireAdmin, async (_req, res) => {
+  const items = await Contribution.find().populate("request", "category amount").sort({ createdAt: -1 }).limit(500).lean();
+  res.json(items.map(x => ({ id: String(x._id), requestId: String(x.request?._id || ""), category: x.request?.category || "", goal: x.request?.amount || 0, amount: x.amount, donorName: x.anonymous ? "Anônimo" : x.donorName, donorType: x.donorType, anonymous: x.anonymous, status: x.status, createdAt: x.createdAt })));
+});
+app.post("/api/admin/requests/:id/mark-paid", requireAuth, requireAdmin, upload.single("proof"), async (req, res) => {
+  let proof;
+  try {
+    if (!req.file || !hasValidFileSignature(req.file)) return res.status(400).json({ error: "Anexe o comprovante de pagamento já rasurado em PDF, JPG ou PNG." });
+    const item = await DebtRequest.findOne({ _id: req.params.id, status: "awaiting_payment" });
+    if (!item) return res.status(409).json({ error: "O pedido precisa estar aguardando pagamento para ser concluído." });
+    proof = await PublicProof.create({ request: item._id, filename: path.basename(req.file.originalname).slice(0, 140), contentType: req.file.mimetype, size: req.file.size, data: req.file.buffer });
+    item.publicProof = proof._id;
+    item.status = "paid";
+    item.adminNote = "Pagamento confirmado pela equipe PagaAi.";
+    item.reviewedBy = req.session.sub;
+    item.reviewedAt = new Date();
+    await item.save();
+    res.json({ ok: true, message: "Pagamento marcado como concluído. O comprovante enviado será exibido publicamente." });
+  } catch (error) {
+    if (proof) await PublicProof.deleteOne({ _id: proof._id }).catch(() => {});
+    console.error("mark paid:", error.message);
+    res.status(400).json({ error: "Não foi possível concluir o pagamento." });
+  }
+});
 app.get("/api/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
   const [users, requests, byStatus, paid] = await Promise.all([
     User.countDocuments({ role: "beneficiary" }), DebtRequest.countDocuments(),
@@ -275,7 +390,7 @@ app.get("/api/admin/requests", requireAuth, requireAdmin, async (_req, res) => {
   res.json(items.map(item => ({
     id: String(item._id), userId: String(item.user?._id || ""), fullName: item.user?.fullName, cpf: item.user?.cpf || "", phone: item.user?.phone, phoneVerified: item.user?.phoneVerified,
     city: item.user?.city, state: item.user?.state, category: item.category, creditor: item.creditor, amount: item.amount,
-    description: item.description, status: item.status, adminNote: item.adminNote, createdAt: item.createdAt, documentId: String(item.document)
+    description: item.description, status: item.status, raisedAmount: item.raisedAmount || 0, remainingAmount: Math.max(0, item.amount - (item.raisedAmount || 0)), hasPublicProof: Boolean(item.publicProof), adminNote: item.adminNote, createdAt: item.createdAt, documentId: String(item.document)
   })));
 });
 app.get("/api/admin/documents/:id", requireAuth, requireAdmin, async (req, res) => {
@@ -286,13 +401,13 @@ app.get("/api/admin/documents/:id", requireAuth, requireAdmin, async (req, res) 
   res.setHeader("Cache-Control", "no-store"); res.send(doc.data);
 });
 app.patch("/api/admin/requests/:id", requireAuth, requireAdmin, async (req, res) => {
-  const allowed = ["approved", "rejected", "needs_more_info", "paid"];
+  const allowed = ["approved", "rejected", "needs_more_info"];
   const { status, note } = req.body || {};
   if (!allowed.includes(status)) return res.status(400).json({ error: "Status inválido." });
   const existing = await DebtRequest.findById(req.params.id).populate("user", "phoneVerified");
   if (!existing) return res.status(404).json({ error: "Solicitação não encontrada." });
   if (status === "approved" && !existing.user?.phoneVerified) return res.status(409).json({ error: "Confirme o telefone do beneficiário antes de aprovar e publicar o pedido." });
-  if (status === "paid" && existing.status !== "approved" && existing.status !== "paid") return res.status(409).json({ error: "Somente uma solicitação aprovada pode ser marcada como quitada." });
+  if (status === "approved" && !["pending_review", "needs_more_info", "rejected"].includes(existing.status)) return res.status(409).json({ error: "Este pedido não pode voltar para aprovação nesta etapa." });
   existing.status = status;
   existing.adminNote = String(note || "").slice(0, 1000);
   existing.reviewedBy = req.session.sub;
