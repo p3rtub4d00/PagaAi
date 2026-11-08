@@ -300,7 +300,7 @@ document.addEventListener("click",async e=>{const t=e.target.closest("button,a")
   try{
    const r=await api("/api/admin/users/"+encodeURIComponent(id)+"/phone-verification-code",{method:"POST"});
    const digits="55"+String(r.phone||"").replace(/\D/g,"");
-   const msg="Olá, "+r.fullName+". Seu código de verificação do PagaAi é "+r.code+". Ele expira em 10 minutos. Não compartilhe este código com outras pessoas.";
+   const msg="Olá, "+r.fullName+". Seu código de verificação do PagaAi é "+r.code+". Ele expira em 10 minutos. Não compartilhe este código com outras pessoas.\n\n🌐 Acesse o PagaAi: "+location.origin+"/";
    const wa="https://wa.me/"+digits+"?text="+encodeURIComponent(msg);
    box.innerHTML='<div class="pa-phone-code-result"><p>Código: <strong>'+esc(r.code)+'</strong> · válido por 10 minutos</p><button type="button" class="pa-btn pa-light" data-copy-phone-code="'+esc(r.code)+'">Copiar código</button> <a class="pa-btn pa-green" href="'+wa+'" target="_blank" rel="noopener">Abrir WhatsApp</a></div>';
    t.textContent="Gerar novo código";t.disabled=false;
