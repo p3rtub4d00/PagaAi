@@ -301,24 +301,18 @@ document.addEventListener("click",async e=>{const t=e.target.closest("button,a")
    const r=await api("/api/admin/users/"+encodeURIComponent(id)+"/phone-verification-code",{method:"POST"});
    const digits="55"+String(r.phone||"").replace(/\D/g,"");
    const msg="Olá, "+r.fullName+". Seu código de verificação do PagaAi é "+r.code+". Ele expira em 10 minutos. Não compartilhe este código com outras pessoas.\n\n🌐 Acesse o PagaAi: "+location.origin+"/";
-   box.innerHTML='<div class="pa-phone-code-result"><p>Código: <strong>'+esc(r.code)+'</strong> · válido por 10 minutos</p><button type="button" class="pa-btn pa-light" data-copy-phone-code="'+esc(r.code)+'">Copiar código</button> <button type="button" class="pa-btn pa-green" data-share-phone-code="'+esc(msg)+'">Compartilhar código</button></div>';
+   const businessIntent="intent://send?phone="+encodeURIComponent(digits)+"&text="+encodeURIComponent(msg)+"#Intent;scheme=whatsapp;package=com.whatsapp.w4b;end";
+   box.innerHTML='<div class="pa-phone-code-result"><p>Código: <strong>'+esc(r.code)+'</strong> · válido por 10 minutos</p><button type="button" class="pa-btn pa-light" data-copy-phone-code="'+esc(r.code)+'">Copiar código</button> <button type="button" class="pa-btn pa-green" data-whatsapp-business="'+esc(businessIntent)+'">Enviar pelo WhatsApp Business</button></div>';
    t.textContent="Gerar novo código";t.disabled=false;
   }catch(err){alert(err.message);t.textContent="Gerar código";t.disabled=false;}
   return;
  }
- if(t.hasAttribute("data-share-phone-code")){
-  const msg=t.dataset.sharePhoneCode;
+ if(t.hasAttribute("data-whatsapp-business")){
+  const intent=t.dataset.whatsappBusiness;
   try{
-   if(navigator.share){
-    await navigator.share({title:"Código de verificação PagaAi",text:msg});
-   }else if(navigator.clipboard){
-    await navigator.clipboard.writeText(msg);
-    alert("O compartilhamento nativo não está disponível neste navegador. A mensagem completa foi copiada; agora você pode escolher WhatsApp ou WhatsApp Business.");
-   }else{
-    alert("O compartilhamento não está disponível neste navegador. Copie a mensagem manualmente.");
-   }
+   window.location.href=intent;
   }catch(err){
-   if(err?.name!=="AbortError") alert("Não foi possível abrir o menu de compartilhamento.");
+   alert("Não foi possível abrir o WhatsApp Business. Verifique se o aplicativo está instalado neste celular.");
   }
   return;
  }
